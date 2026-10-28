@@ -12,12 +12,37 @@ using Dock.Model.Avalonia;
 using Dock.Model.Avalonia.Controls;
 using LightSharp.Models;
 using LightSharp.Services;
+using LightSharp.Views;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace LightSharp;
 
 public sealed partial class MainWindow : Window
 {
+    private TreeView FileTree => SolutionExplorerPanel.FileTree;
+    private TextBlock GitRepositoryText => GitChangesPanel.RepositoryText;
+    private Button GitRefreshButton => GitChangesPanel.RefreshAction;
+    private Button GitStageAllButton => GitChangesPanel.StageAllAction;
+    private Button GitFetchButton => GitChangesPanel.FetchAction;
+    private Button GitPullButton => GitChangesPanel.PullAction;
+    private Button GitPushButton => GitChangesPanel.PushAction;
+    private ListBox GitChangesList => GitChangesPanel.Changes;
+    private TextBlock GitEmptyText => GitChangesPanel.EmptyStateText;
+    private TextBox GitCommitMessageBox => GitChangesPanel.MessageInput;
+    private Button GitCommitButton => GitChangesPanel.CommitAction;
+    private ItemsControl DocumentTabs => EditorSurface.DocumentTabs;
+    private AvaloniaEdit.TextEditor Editor => EditorSurface.Editor;
+    private Control EmptyEditorText => EditorSurface.EmptyEditorText;
+    private TextBlock WorkspaceDetailText => PropertiesPanel.WorkspaceDetailText;
+    private TextBox Output => OutputPanel.Output;
+    private ListBox ProblemsList => OutputPanel.ProblemsList;
+    private TextBlock StatusText => OutputPanel.StatusText;
+    private TextBlock TestsSummaryText => OutputPanel.TestsSummaryText;
+    private Button ProblemsTabButton => OutputPanel.ProblemsTabButton;
+    private Button OutputTabButton => OutputPanel.OutputTabButton;
+    private Button TestsTabButton => OutputPanel.TestsTabButton;
+    private Control TestsContent => OutputPanel.TestsContent;
+
     private readonly WorkspaceService _workspace = new();
     private readonly DotNetService _dotnet = new();
     private readonly GitService _git = new();
@@ -65,6 +90,22 @@ public sealed partial class MainWindow : Window
         Editor.Options.IndentationSize = 4;
         Editor.Options.ConvertTabsToSpaces = true;
         Editor.TextArea.IndentationStrategy = new AvaloniaEdit.Indentation.CSharp.CSharpIndentationStrategy(Editor.Options);
+        SolutionExplorerPanel.FileDoubleTapped += FileTree_DoubleTapped;
+        SolutionExplorerPanel.FileItemRightTapped += FileTreeItem_RightTapped;
+        EditorSurface.DocumentTextChanged += Editor_TextChanged;
+        EditorSurface.EditorKeyDown += Editor_KeyDown;
+        EditorSurface.DocumentActivated += DocumentTab_Click;
+        EditorSurface.DocumentCloseRequested += CloseDocument_Click;
+        PropertiesPanel.OpenFolderRequested += OpenFolder_Click;
+        PropertiesPanel.BuildRequested += Build_Click;
+        OutputPanel.ProblemDoubleTapped += Problem_DoubleTapped;
+        OutputPanel.RunTestsRequested += Test_Click;
+        GitChangesPanel.RefreshAction.Click += RefreshGit_Click;
+        GitChangesPanel.StageAllAction.Click += StageAllGit_Click;
+        GitChangesPanel.FetchAction.Click += FetchGit_Click;
+        GitChangesPanel.PullAction.Click += PullGit_Click;
+        GitChangesPanel.PushAction.Click += PushGit_Click;
+        GitChangesPanel.CommitAction.Click += CommitGit_Click;
         InitializeDockLayout();
         FileTree.ItemsSource = _roots;
         StartupProjectSelector.ItemsSource = _projects;

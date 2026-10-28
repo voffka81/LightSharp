@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:LightSharp"
+             x:Class="LightSharp.Views.OutputPanelView">
+  <Border Height="190" Background="{DynamicResource BrushPanelSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
+    <Grid RowDefinitions="Auto,*">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" Height="36" Margin="12,0">
+        <Button x:Name="ProblemsTab" Classes="output-tab selected" Content="PROBLEMS" Click="ShowProblems_Click"/>
+        <Button x:Name="OutputTab" Grid.Column="1" Classes="output-tab" Margin="16,0,0,0" Content="OUTPUT" Click="ShowOutput_Click"/>
+        <Button x:Name="TestsTab" Grid.Column="2" Classes="output-tab" Margin="16,0,0,0" Content="TESTS" Click="ShowTests_Click"/>
+        <TextBlock x:Name="Status" Grid.Column="3" Margin="18,0" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextMuted7}" FontSize="11" Text="Ready"/>
+        <Button Grid.Column="4" Classes="chrome" Content="⌄" Padding="8,2"/>
+      </Grid>
+      <Grid Grid.Row="1">
+        <TextBox x:Name="OutputTextBox" IsVisible="False" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Padding="12,7" Background="{DynamicResource BrushInsetSurface}" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+        <ListBox x:Name="Problems" Background="{DynamicResource BrushInsetSurface}" IsVisible="True" DoubleTapped="Problems_DoubleTapped">
+          <ListBox.ItemTemplate><DataTemplate x:DataType="local:EditorProblem"><TextBlock Text="{Binding DisplayText}" FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Foreground="{DynamicResource BrushError}" Margin="7,2"/></DataTemplate></ListBox.ItemTemplate>
+        </ListBox>
+        <StackPanel x:Name="TestsView" IsVisible="False" Background="{DynamicResource BrushInsetSurface}" Orientation="Horizontal" VerticalAlignment="Center" Margin="12" Spacing="12">
+          <TextBlock x:Name="TestsSummary" Text="Run the solution tests to see results here." Foreground="{DynamicResource BrushTextChrome}" VerticalAlignment="Center"/>
+          <Button x:Name="RunTestsButton" Classes="chrome" Content="Run Tests" Click="RunTests_Click"/>
+        </StackPanel>
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>
