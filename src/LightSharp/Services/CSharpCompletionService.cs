@@ -75,6 +75,53 @@ public sealed class CSharpCompletionService : IDisposable
             : semanticModel.GetDiagnostics(cancellationToken: cancellationToken);
     }
 
+    public async Task<IReadOnlyList<(int Start, int Length, string Color)>> GetSemanticHighlightsAsync(
+        string projectPath,
+        string filePath,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        var document = await GetDocumentAsync(projectPath, filePath, cancellationToken);
+        if (document is null) return [];
+        var currentDocument = document.WithText(SourceText.From(source));
+        var model = await currentDocument.GetSemanticModelAsync(cancellationToken);
+        var root = await currentDocument.GetSyntaxRootAsync(cancellationToken);
+        if (model is null || root is null) return [];
+
+        var spans = new Dictionary<(int Start, int Length), string>();
+        void Add(Microsoft.CodeAnalysis.Text.TextSpan span, ISymbol? symbol)
+        {
+            var color = symbol switch
+            {
+                INamespaceSymbol => "#4EC9B0",
+                INamedTypeSymbol or ITypeParameterSymbol => "#4EC9B0",
+                IMethodSymbol => "#DCDCAA",
+                IPropertySymbol or IEventSymbol => "#9CDCFE",
+                _ => null
+            };
+            if (color is not null && span.Length > 0)
+                spans[(span.Start, span.Length)] = color;
+        }
+
+        foreach (var name in root.DescendantNodes().OfType<SimpleNameSyntax>())
+        {
+            var symbolInfo = model.GetSymbolInfo(name, cancellationToken);
+            var symbol = symbolInfo.Symbol ?? symbolInfo.CandidateSymbols.FirstOrDefault();
+            Add(name.Identifier.Span, symbol);
+        }
+
+        foreach (var declaration in root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
+            Add(declaration.Identifier.Span, model.GetDeclaredSymbol(declaration, cancellationToken));
+        foreach (var declaration in root.DescendantNodes().OfType<DelegateDeclarationSyntax>())
+            Add(declaration.Identifier.Span, model.GetDeclaredSymbol(declaration, cancellationToken));
+        foreach (var declaration in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            Add(declaration.Identifier.Span, model.GetDeclaredSymbol(declaration, cancellationToken));
+        foreach (var declaration in root.DescendantNodes().OfType<PropertyDeclarationSyntax>())
+            Add(declaration.Identifier.Span, model.GetDeclaredSymbol(declaration, cancellationToken));
+
+        return spans.Select(item => (item.Key.Start, item.Key.Length, item.Value)).ToArray();
+    }
+
     public async Task<string> FormatAsync(
         string? projectPath,
         string filePath,

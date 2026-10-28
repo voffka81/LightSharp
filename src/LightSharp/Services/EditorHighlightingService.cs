@@ -33,7 +33,10 @@ public static class EditorHighlightingService
         ["GetSetAddRemove"] = "#569CD6",
         ["TrueFalse"] = "#569CD6",
         ["TypeKeywords"] = "#569CD6",
-        ["SemanticKeywords"] = "#569CD6"
+        ["SemanticKeywords"] = "#569CD6",
+        ["Punctuation"] = "#D4D4D4",
+        ["Operator"] = "#D4D4D4",
+        ["Attribute"] = "#4EC9B0"
     };
 
     private static readonly IReadOnlyDictionary<string, string> XmlColors = new Dictionary<string, string>
@@ -99,7 +102,37 @@ public static class EditorHighlightingService
                 element.SetAttributeValue("foreground", color);
         }
 
+        if (resourceSuffix == ".CSharp-Mode.xshd")
+            ConfigureCSharpRules(document);
+
         using var reader = document.CreateReader();
         return HighlightingLoader.Load(reader, HighlightingManager.Instance);
+    }
+
+    private static void ConfigureCSharpRules(XDocument document)
+    {
+        var root = document.Root ?? throw new InvalidOperationException("C# highlighting definition is empty.");
+        var ns = root.Name.Namespace;
+        var ruleSet = root.Elements(ns + "RuleSet").FirstOrDefault()
+            ?? throw new InvalidOperationException("C# highlighting rules were not found.");
+
+        var methodRule = ruleSet.Elements(ns + "Rule").FirstOrDefault(rule =>
+            (string?)rule.Attribute("color") == "MethodCall");
+        methodRule?.AddBeforeSelf(new XElement(ns + "Rule",
+            new XAttribute("color", "Attribute"),
+            @"(?<=\[)\s*[\w.]+(?=\s*(?:\(|,|\]))"));
+
+        var punctuationRule = ruleSet.Elements(ns + "Rule").FirstOrDefault(rule =>
+            (string?)rule.Attribute("color") == "Punctuation");
+        punctuationRule?.AddBeforeSelf(new XElement(ns + "Rule",
+            new XAttribute("color", "Operator"),
+            @"(?:>>>=|<<=|>>=|=>|==|!=|<=|>=|&&|\|\||\?\?|\+\+|--|\+=|-=|\*=|/=|%=|&=|\|=|\^=|<<|>>|[=+\-*/%&|^!~<>?:])"));
+
+        var keywordList = ruleSet.Elements(ns + "Keywords").FirstOrDefault(element =>
+            (string?)element.Attribute("color") == "Keywords");
+        if (keywordList is null) return;
+        var existing = keywordList.Elements(ns + "Word").Select(word => word.Value).ToHashSet(StringComparer.Ordinal);
+        foreach (var keyword in new[] { "record", "init", "required", "file", "scoped", "with", "not", "and", "or" })
+            if (existing.Add(keyword)) keywordList.Add(new XElement(ns + "Word", keyword));
     }
 }

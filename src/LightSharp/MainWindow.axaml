@@ -3,6 +3,7 @@
         xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
         xmlns:models="using:LightSharp.Models"
         xmlns:local="using:LightSharp"
+        xmlns:services="using:LightSharp.Services"
         x:Class="LightSharp.MainWindow"
         Title="LightSharp" Width="1440" Height="900" MinWidth="1050" MinHeight="680"
         Background="#1E1F22" Foreground="#DADCE0" KeyDown="Window_KeyDown">
@@ -33,7 +34,7 @@
           <MenuItem Header="File"><MenuItem Header="New Project...  Ctrl+Shift+N" Click="NewProject_Click"/><Separator/><MenuItem Header="Open File...  Ctrl+O" Click="OpenFile_Click"/><MenuItem Header="Open Solution...  Ctrl+Shift+O" Click="OpenSolution_Click"/><MenuItem Header="Open Folder..." Click="OpenFolder_Click"/><Separator/><MenuItem Header="Save  Ctrl+S" Click="Save_Click"/><MenuItem Header="Save All  Ctrl+Shift+S" Click="SaveAll_Click"/></MenuItem>
           <MenuItem Header="Edit"><MenuItem Header="Format Document  Ctrl+K, Ctrl+D" Click="FormatDocument_Click"/><MenuItem Header="Format Selection  Ctrl+K, Ctrl+F" Click="FormatSelection_Click"/><Separator/><MenuItem Header="Comment Selection  Ctrl+K, Ctrl+C" Click="Comment_Click"/><MenuItem Header="Uncomment Selection  Ctrl+K, Ctrl+U" Click="Uncomment_Click"/><Separator/><MenuItem Header="Select All  Ctrl+A" Click="SelectAll_Click"/></MenuItem>
           <MenuItem Header="View"><MenuItem Header="Focus Output" Click="FocusOutput_Click"/></MenuItem>
-          <MenuItem Header="Git" IsEnabled="False"/><MenuItem Header="Build  Ctrl+Shift+B" Click="Build_Click"/><MenuItem Header="Debug"><MenuItem Header="Start  F5" Click="Start_Click"/><MenuItem Header="Start Without Debugging  Ctrl+F5" Click="Start_Click"/><MenuItem Header="Stop  Shift+F5" Click="Stop_Click"/></MenuItem><MenuItem Header="Test"><MenuItem Header="Run Tests  Ctrl+R, Ctrl+T" Click="Test_Click"/></MenuItem>
+          <MenuItem x:Name="GitMenuItem" Header="Git"><MenuItem x:Name="GitChangesMenuItem" Header="Git Changes" Click="ShowGitChanges_Click" IsVisible="False"/><MenuItem x:Name="RefreshGitMenuItem" Header="Refresh Status" Click="RefreshGit_Click" IsVisible="False"/><Separator x:Name="GitMenuSeparator" IsVisible="False"/><MenuItem x:Name="InitializeGitMenuItem" Header="Initialize Repository" Click="InitializeGit_Click" IsVisible="False"/><MenuItem x:Name="StageAllGitMenuItem" Header="Stage All Changes" Click="StageAllGit_Click" IsVisible="False"/><MenuItem x:Name="CommitGitMenuItem" Header="Commit All..." Click="ShowGitChanges_Click" IsVisible="False"/></MenuItem><MenuItem Header="Build  Ctrl+Shift+B" Click="Build_Click"/><MenuItem Header="Debug"><MenuItem Header="Start  F5" Click="Start_Click"/><MenuItem Header="Start Without Debugging  Ctrl+F5" Click="Start_Click"/><MenuItem Header="Stop  Shift+F5" Click="Stop_Click"/></MenuItem><MenuItem Header="Test"><MenuItem Header="Run Tests  Ctrl+R, Ctrl+T" Click="Test_Click"/></MenuItem>
         </Menu>
         <TextBlock Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#8F9198" FontSize="11" Text="LightSharp  ·  Lightweight C# IDE" />
         <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center" Spacing="4">
@@ -81,6 +82,15 @@
           </TreeView>
         </Grid>
       </Border>
+      <Border x:Name="GitChangesPanel" Grid.Column="1" Background="#25262A" BorderBrush="#3A3B40" BorderThickness="0,0,1,0">
+        <Grid x:Name="GitChangesContent" Background="#25262A" RowDefinitions="Auto,*,Auto">
+          <StackPanel Orientation="Horizontal" Margin="8,5" Spacing="6"><TextBlock x:Name="GitRepositoryText" Foreground="#92949B" FontSize="11" VerticalAlignment="Center"/><Button Classes="chrome" Content="Refresh" Click="RefreshGit_Click" Padding="8,3"/><Button Classes="chrome" Content="Stage All" Click="StageAllGit_Click" Padding="8,3"/></StackPanel>
+          <Grid Grid.Row="1"><ListBox x:Name="GitChangesList" Background="#202125">
+              <ListBox.ItemTemplate><DataTemplate x:DataType="services:GitChange"><TextBlock Text="{Binding DisplayText}" FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Foreground="#DADCE0" Margin="7,2"/></DataTemplate></ListBox.ItemTemplate>
+            </ListBox><TextBlock x:Name="GitEmptyText" Text="No changes detected." Foreground="#85878E" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/></Grid>
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="8,4" ColumnSpacing="8"><TextBox x:Name="GitCommitMessageBox" PlaceholderText="Commit message"/><Button Classes="launch" Content="Commit All" Click="CommitGit_Click"/></Grid>
+        </Grid>
+      </Border>
       <Border Grid.Column="2" Background="#3A3B40"/>
       <Grid x:Name="EditorSurface" Grid.Column="3" RowDefinitions="Auto,*" Background="#1E1F22">
         <Border Grid.Row="0" Background="#25262A" BorderBrush="#3A3B40" BorderThickness="0,0,0,1">
@@ -117,7 +127,7 @@
         </Grid>
       </Grid>
     </Border>
-    <Border Grid.Row="4" Padding="10,4" Background="#333438" BorderBrush="#424349" BorderThickness="0,1,0,0"><Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto"><TextBlock Foreground="#B3B5BA" FontSize="11" Text="⎇  main"/><TextBlock x:Name="EditorStatusText" Grid.Column="1" Margin="16,0,0,0" Foreground="#A7A9AF" FontSize="11" Text="✓  Ready"/><TextBlock Grid.Column="2" Margin="16,0,0,0" Foreground="#A7A9AF" FontSize="11" Text=".NET 10"/><TextBlock Grid.Column="4" Margin="12,0" Foreground="#A7A9AF" FontSize="11" Text="C#"/><TextBlock x:Name="CursorStatusText" Grid.Column="5" Margin="12,0" Foreground="#A7A9AF" FontSize="11" Text="Ln 1, Col 1"/><TextBlock x:Name="DiagnosticsText" Grid.Column="6" Margin="12,0" Foreground="#A7A9AF" FontSize="11"/></Grid></Border>
+    <Border Grid.Row="4" Padding="10,4" Background="#333438" BorderBrush="#424349" BorderThickness="0,1,0,0"><Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto"><TextBlock x:Name="BranchStatusText" Foreground="#B3B5BA" FontSize="11" Text="⎇  No repository"/><TextBlock x:Name="EditorStatusText" Grid.Column="1" Margin="16,0,0,0" Foreground="#A7A9AF" FontSize="11" Text="✓  Ready"/><TextBlock Grid.Column="2" Margin="16,0,0,0" Foreground="#A7A9AF" FontSize="11" Text=".NET 10"/><TextBlock Grid.Column="4" Margin="12,0" Foreground="#A7A9AF" FontSize="11" Text="C#"/><TextBlock x:Name="CursorStatusText" Grid.Column="5" Margin="12,0" Foreground="#A7A9AF" FontSize="11" Text="Ln 1, Col 1"/><TextBlock x:Name="DiagnosticsText" Grid.Column="6" Margin="12,0" Foreground="#A7A9AF" FontSize="11"/></Grid></Border>
   </Grid>
 </Window>
 

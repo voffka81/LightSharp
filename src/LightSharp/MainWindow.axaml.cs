@@ -20,14 +20,20 @@ public sealed partial class MainWindow : Window
 {
     private readonly WorkspaceService _workspace = new();
     private readonly DotNetService _dotnet = new();
+    private readonly GitService _git = new();
     private readonly CSharpCompletionService _completionService = new();
     private readonly SyntaxErrorRenderer _syntaxErrorRenderer;
+    private readonly SemanticColorizingTransformer _semanticColorizer;
     private readonly ObservableCollection<FileNode> _roots = [];
     private readonly ObservableCollection<FileNode> _projects = [];
     private readonly ObservableCollection<EditorDocument> _documents = [];
     private readonly ObservableCollection<EditorProblem> _problems = [];
+    private readonly ObservableCollection<GitChange> _gitChanges = [];
     private string? _workspacePath;
     private string? _solutionPath;
+    private string? _gitRepositoryPath;
+    private ToolDock? _solutionExplorerDock;
+    private Tool? _gitChangesTool;
     private EditorDocument? _activeDocument;
     private bool _loadingDocument;
     private CancellationTokenSource? _commandCts;
@@ -41,11 +47,15 @@ public sealed partial class MainWindow : Window
     private string _outputView = "Problems";
     private string? _shortcutPrefix;
     private int _hoverOffset = -1;
+    private bool _suppressNextCompletionNewline;
+    private bool _suppressNextCompletionPeriod;
 
     public MainWindow()
     {
         InitializeComponent();
         _syntaxErrorRenderer = new SyntaxErrorRenderer(Editor);
+        _semanticColorizer = new SemanticColorizingTransformer();
+        Editor.TextArea.TextView.LineTransformers.Add(_semanticColorizer);
         Editor.Options.IndentationSize = 4;
         Editor.Options.ConvertTabsToSpaces = true;
         Editor.TextArea.IndentationStrategy = new AvaloniaEdit.Indentation.CSharp.CSharpIndentationStrategy(Editor.Options);
@@ -54,8 +64,12 @@ public sealed partial class MainWindow : Window
         StartupProjectSelector.ItemsSource = _projects;
         DocumentTabs.ItemsSource = _documents;
         ProblemsList.ItemsSource = _problems;
+        GitChangesList.ItemsSource = _gitChanges;
+        GitMenuItem.IsEnabled = false;
+        GitEmptyText.Text = "Open a workspace to connect Git.";
         Editor.TextArea.Caret.PositionChanged += (_, _) => UpdateCursorStatus();
         Editor.TextArea.TextEntered += Editor_TextEntered;
+        Editor.TextArea.TextEntering += Editor_TextEntering;
         Closed += (_, _) =>
         {
             _completionRequestCts?.Cancel();
@@ -85,6 +99,7 @@ public sealed partial class MainWindow : Window
     private void InitializeDockLayout()
     {
         WorkspaceArea.Children.Remove(SolutionExplorerPanel);
+        WorkspaceArea.Children.Remove(GitChangesPanel);
         WorkspaceArea.Children.Remove(EditorSurface);
         WorkspaceArea.Children.Remove(PropertiesPanel);
         ShellGrid.Children.Remove(WorkspaceArea);
@@ -115,6 +130,14 @@ public sealed partial class MainWindow : Window
             CanClose = false,
             Content = new Func<IServiceProvider, object>(_ => SolutionExplorerPanel)
         };
+        var gitChanges = new Tool
+        {
+            Id = "GitChanges",
+            Title = "Git Changes",
+            CanClose = false,
+            Content = new Func<IServiceProvider, object>(_ => GitChangesPanel)
+        };
+        _gitChangesTool = gitChanges;
         var properties = new Tool
         {
             Id = "Properties",
@@ -127,9 +150,10 @@ public sealed partial class MainWindow : Window
             Title = "Solution Explorer",
             Alignment = Alignment.Right,
             Proportion = 0.56,
-            VisibleDockables = factory.CreateList<IDockable>(solutionExplorer),
+            VisibleDockables = factory.CreateList<IDockable>(solutionExplorer, gitChanges),
             ActiveDockable = solutionExplorer
         };
+        _solutionExplorerDock = solutionExplorerDock;
         var propertiesDock = new ToolDock
         {
             Id = "PropertiesDock",
@@ -281,6 +305,7 @@ public sealed partial class MainWindow : Window
         }
         StartupProjectSelector.SelectedItem = _projects.FirstOrDefault();
         StatusText.Text = "Ready";
+        await RefreshGitStatusAsync();
     }
 
     private async void FileTree_DoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
@@ -545,6 +570,113 @@ public sealed partial class MainWindow : Window
         TestsContent.IsVisible = view == "Tests";
     }
 
+    private void ShowGitChanges_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_solutionExplorerDock is not null && _gitChangesTool is not null)
+            _solutionExplorerDock.ActiveDockable = _gitChangesTool;
+        _ = RefreshGitStatusAsync();
+    }
+
+    private async void RefreshGit_Click(object? sender, RoutedEventArgs e) => await RefreshGitStatusAsync();
+
+    private async Task RefreshGitStatusAsync()
+    {
+        _gitChanges.Clear();
+        _gitRepositoryPath = _workspacePath is null ? null : _git.FindRepositoryRoot(_workspacePath);
+        var hasRepository = _gitRepositoryPath is not null;
+        GitMenuItem.IsEnabled = _workspacePath is not null;
+        GitChangesMenuItem.IsVisible = hasRepository;
+        RefreshGitMenuItem.IsVisible = hasRepository;
+        GitMenuSeparator.IsVisible = hasRepository;
+        InitializeGitMenuItem.IsVisible = _workspacePath is not null && !hasRepository;
+        StageAllGitMenuItem.IsVisible = hasRepository;
+        CommitGitMenuItem.IsVisible = hasRepository;
+
+        if (!hasRepository)
+        {
+            BranchStatusText.Text = "⎇  No repository";
+            GitRepositoryText.Text = "Not a Git repository";
+            GitEmptyText.Text = _workspacePath is null ? "Open a workspace to connect Git." : "Use Git > Initialize Repository to create a repository.";
+            GitEmptyText.IsVisible = true;
+            return;
+        }
+
+        try
+        {
+            var status = await _git.GetStatusAsync(_gitRepositoryPath!);
+            BranchStatusText.Text = $"⎇  {status.Branch}";
+            GitRepositoryText.Text = $"{_gitRepositoryPath} · {status.Branch}";
+            foreach (var change in status.Changes) _gitChanges.Add(change);
+            GitEmptyText.IsVisible = _gitChanges.Count == 0;
+            GitEmptyText.Text = _gitChanges.Count == 0 ? "No changes detected." : string.Empty;
+        }
+        catch (Exception ex)
+        {
+            GitRepositoryText.Text = _gitRepositoryPath!;
+            GitEmptyText.Text = ex.Message;
+            GitEmptyText.IsVisible = true;
+            AppendOutput($"Git status unavailable: {ex.Message}");
+        }
+    }
+
+    private async void InitializeGit_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_workspacePath is null) return;
+        try
+        {
+            await _git.InitializeAsync(_workspacePath);
+            await RefreshGitStatusAsync();
+            ShowGitChanges_Click(this, new RoutedEventArgs());
+        }
+        catch (Exception ex)
+        {
+            AppendOutput($"Unable to initialize Git repository: {ex.Message}");
+            StatusText.Text = "Git initialization failed";
+        }
+    }
+
+    private async void StageAllGit_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_gitRepositoryPath is null) return;
+        try
+        {
+            await _git.StageAllAsync(_gitRepositoryPath);
+            await RefreshGitStatusAsync();
+            StatusText.Text = "All changes staged";
+        }
+        catch (Exception ex)
+        {
+            AppendOutput($"Unable to stage Git changes: {ex.Message}");
+            StatusText.Text = "Git staging failed";
+        }
+    }
+
+    private async void CommitGit_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_gitRepositoryPath is null) return;
+        var message = GitCommitMessageBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            StatusText.Text = "Enter a commit message";
+            GitCommitMessageBox.Focus();
+            return;
+        }
+
+        try
+        {
+            var result = await _git.CommitAllAsync(_gitRepositoryPath, message);
+            AppendOutput(result);
+            GitCommitMessageBox.Clear();
+            await RefreshGitStatusAsync();
+            StatusText.Text = "Commit created";
+        }
+        catch (Exception ex)
+        {
+            AppendOutput($"Git commit failed: {ex.Message}");
+            StatusText.Text = "Git commit failed";
+        }
+    }
+
     private void Problem_DoubleTapped(object? sender, TappedEventArgs e)
     {
         if (ProblemsList.SelectedItem is not EditorProblem problem || Editor.Document is null) return;
@@ -805,8 +937,25 @@ public sealed partial class MainWindow : Window
             _ = ShowCompletionAsync(character, explicitInvocation: false);
     }
 
+    private void Editor_TextEntering(object? sender, TextInputEventArgs e)
+    {
+        if (_suppressNextCompletionNewline && e.Text is "\r" or "\n" or "\r\n")
+        {
+            _suppressNextCompletionNewline = false;
+            e.Handled = true;
+        }
+        else if (_suppressNextCompletionPeriod && e.Text == ".")
+        {
+            _suppressNextCompletionPeriod = false;
+            e.Handled = true;
+        }
+    }
+
     private void Editor_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Key != Key.Enter) _suppressNextCompletionNewline = false;
+        if (e.Key is not (Key.OemPeriod or Key.Decimal)) _suppressNextCompletionPeriod = false;
+
         if (e.Key == Key.Enter && (e.KeyModifiers & KeyModifiers.Alt) != 0)
         {
             e.Handled = true;
@@ -814,13 +963,14 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (_completionWindow is not null && e.Key is Key.Enter or Key.Tab)
+        if (_completionWindow is not null && e.Key is Key.Enter or Key.Tab or Key.OemPeriod or Key.Decimal)
         {
             var list = _completionWindow.CompletionList;
             if (list.SelectedItem is null && list.CompletionData.Count > 0)
                 list.SelectedItem = list.CompletionData[0];
             if (list.SelectedItem is not null)
             {
+                PrepareCompletionCommit(e.Key);
                 e.Handled = true;
                 list.RequestInsertion(e);
                 return;
@@ -830,6 +980,39 @@ public sealed partial class MainWindow : Window
         if (e.Key != Key.Space || (e.KeyModifiers & KeyModifiers.Control) == 0) return;
         e.Handled = true;
         _ = ShowCompletionAsync(null, explicitInvocation: true);
+    }
+
+    private char? PrepareCompletionCommit(EventArgs request)
+    {
+        return request is KeyEventArgs keyEvent ? PrepareCompletionCommit(keyEvent.Key) : null;
+    }
+
+    private char? PrepareCompletionCommit(Key key)
+    {
+        if (key == Key.Enter)
+            _suppressNextCompletionNewline = true;
+        else if (key is Key.OemPeriod or Key.Decimal)
+        {
+            _suppressNextCompletionPeriod = true;
+            return "."[0];
+        }
+        return null;
+    }
+
+    private void CompleteTextItem(
+        AvaloniaEdit.Editing.TextArea textArea,
+        AvaloniaEdit.Document.ISegment segment,
+        string completionText,
+        EventArgs insertionRequest)
+    {
+        var commitCharacter = PrepareCompletionCommit(insertionRequest);
+        textArea.Document.Replace(segment.Offset, segment.Length, completionText);
+        textArea.Caret.Offset = segment.Offset + completionText.Length;
+        if (commitCharacter is char character)
+        {
+            textArea.Document.Insert(textArea.Caret.Offset, character.ToString());
+            textArea.Caret.Offset++;
+        }
     }
 
     private void EditorTextView_PointerMoved(object? sender, PointerEventArgs e)
@@ -1044,7 +1227,7 @@ public sealed partial class MainWindow : Window
                 CloseAutomatically = true,
                 CloseWhenCaretAtBeginning = triggerCharacter != '.'
             };
-            completionWindow.CompletionList.CompletionAcceptKeys = [Key.Enter, Key.Tab];
+            completionWindow.CompletionList.CompletionAcceptKeys = [Key.Enter, Key.Tab, Key.OemPeriod, Key.Decimal];
 
             if (matchingSemanticItems.Length > 0)
             {
@@ -1056,11 +1239,12 @@ public sealed partial class MainWindow : Window
                     var completionItem = new EditorCompletionItem(
                         item.DisplayText,
                         item.Description,
-                        (textArea, segment) =>
+                        (textArea, segment, insertionEventArgs) =>
                         {
                             if (insertionRequested) return;
                             insertionRequested = true;
-                            _ = ApplySemanticCompletionAsync(item, textArea, segment);
+                            var commitCharacter = PrepareCompletionCommit(insertionEventArgs);
+                            _ = ApplySemanticCompletionAsync(item, textArea, segment, commitCharacter);
                         });
                     completionWindow.CompletionList.CompletionData.Add(completionItem);
                     if (expectedTypeName is not null &&
@@ -1073,12 +1257,11 @@ public sealed partial class MainWindow : Window
                     preferredItem = new EditorCompletionItem(
                         expectedTypeName,
                         "Expected type for this expression",
-                        (textArea, segment) =>
+                        (textArea, segment, insertionEventArgs) =>
                         {
                             if (insertionRequested) return;
                             insertionRequested = true;
-                            textArea.Document.Replace(segment.Offset, segment.Length, expectedTypeName);
-                            textArea.Caret.Offset = segment.Offset + expectedTypeName.Length;
+                            CompleteTextItem(textArea, segment, expectedTypeName, insertionEventArgs);
                         });
                     completionWindow.CompletionList.CompletionData.Add(preferredItem);
                 }
@@ -1093,12 +1276,11 @@ public sealed partial class MainWindow : Window
                     completionWindow.CompletionList.CompletionData.Add(new EditorCompletionItem(
                         completionText,
                         "Word from open documents",
-                        (textArea, segment) =>
+                        (textArea, segment, insertionEventArgs) =>
                         {
                             if (insertionRequested) return;
                             insertionRequested = true;
-                            textArea.Document.Replace(segment.Offset, segment.Length, completionText);
-                            textArea.Caret.Offset = segment.Offset + completionText.Length;
+                            CompleteTextItem(textArea, segment, completionText, insertionEventArgs);
                         }));
                 }
                 if (expectedTypeName is not null)
@@ -1106,12 +1288,11 @@ public sealed partial class MainWindow : Window
                     var expectedTypeItem = new EditorCompletionItem(
                         expectedTypeName,
                         "Expected type for this expression",
-                        (textArea, segment) =>
+                        (textArea, segment, insertionEventArgs) =>
                         {
                             if (insertionRequested) return;
                             insertionRequested = true;
-                            textArea.Document.Replace(segment.Offset, segment.Length, expectedTypeName);
-                            textArea.Caret.Offset = segment.Offset + expectedTypeName.Length;
+                            CompleteTextItem(textArea, segment, expectedTypeName, insertionEventArgs);
                         });
                     completionWindow.CompletionList.CompletionData.Insert(0, expectedTypeItem);
                     completionWindow.CompletionList.SelectedItem = expectedTypeItem;
@@ -1140,7 +1321,8 @@ public sealed partial class MainWindow : Window
     private async Task ApplySemanticCompletionAsync(
         CSharpCompletionCandidate candidate,
         AvaloniaEdit.Editing.TextArea textArea,
-        AvaloniaEdit.Document.ISegment segment)
+        AvaloniaEdit.Document.ISegment segment,
+        char? commitCharacter)
     {
         try
         {
@@ -1160,6 +1342,11 @@ public sealed partial class MainWindow : Window
                         textArea.Document.Replace(textChange.Span.Start, textChange.Span.Length, textChange.NewText ?? string.Empty);
 
                     textArea.Caret.Offset = change.NewPosition ?? (segment.Offset + candidate.DisplayText.Length);
+                    if (commitCharacter is char character)
+                    {
+                        textArea.Document.Insert(textArea.Caret.Offset, character.ToString());
+                        textArea.Caret.Offset++;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1252,6 +1439,7 @@ public sealed partial class MainWindow : Window
         {
             _problems.Clear();
             _syntaxErrorRenderer.SetErrors([]);
+            _semanticColorizer.SetHighlights([]);
             ProblemsTabButton.Content = "PROBLEMS";
             EditorStatusText.Text = "✓  Ready";
             return;
@@ -1310,7 +1498,11 @@ public sealed partial class MainWindow : Window
         _semanticDiagnosticsCts = request;
 
         var projectPath = FindProjectForFile(document.FullPath);
-        if (projectPath is null) return;
+        if (projectPath is null)
+        {
+            _semanticColorizer.SetHighlights([]);
+            return;
+        }
         try
         {
             var diagnostics = await _completionService.GetDiagnosticsAsync(
@@ -1318,9 +1510,15 @@ public sealed partial class MainWindow : Window
                 document.FullPath,
                 source,
                 request.Token);
+            var semanticHighlights = await _completionService.GetSemanticHighlightsAsync(
+                projectPath,
+                document.FullPath,
+                source,
+                request.Token);
             if (request.IsCancellationRequested || !ReferenceEquals(_activeDocument, document) ||
                 !string.Equals(Editor.Text, source, StringComparison.Ordinal)) return;
 
+            _semanticColorizer.SetHighlights(semanticHighlights);
             DisplayDiagnostics(diagnostics.Count > 0 ? diagnostics : parseDiagnostics);
         }
         catch (OperationCanceledException) { }
@@ -1358,6 +1556,7 @@ public sealed partial class MainWindow : Window
         ClearQuickInfo();
         _completionWindow?.Hide();
         _completionWindow = null;
+        _semanticColorizer.SetHighlights([]);
         foreach (var item in _documents) item.IsActive = ReferenceEquals(item, document);
         _activeDocument = document;
         _loadingDocument = true;
