@@ -44,7 +44,8 @@ public sealed class WorkspaceService
             var projectDirectory = Path.GetDirectoryName(fullProjectPath);
             if (projectDirectory is not null)
             {
-                foreach (var child in LoadDirectory(projectDirectory, ct))
+                foreach (var child in LoadDirectory(projectDirectory, ct)
+                    .Where(child => !string.Equals(child.FullPath, fullProjectPath, StringComparison.OrdinalIgnoreCase)))
                     project.Children.Add(child);
             }
             root.Children.Add(project);

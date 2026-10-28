@@ -3,9 +3,17 @@
              xmlns:dock="using:Dock.Avalonia.Themes.Fluent"
              x:Class="LightSharp.App"
              RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://LightSharp/Styles/Palette.axaml"/>
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
   <Application.Styles>
     <FluentTheme />
     <dock:DockFluentTheme />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+    <StyleInclude Source="avares://LightSharp/Styles/Controls.axaml"/>
   </Application.Styles>
 </Application>

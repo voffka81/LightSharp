@@ -3,11 +3,11 @@
         x:Class="LightSharp.SaveChangesDialog"
         Title="Unsaved changes" Width="440" Height="190" MinWidth="440" MinHeight="190"
         MaxWidth="440" MaxHeight="190" WindowStartupLocation="CenterOwner" CanResize="False"
-        Background="#292A2E" Foreground="#E0E1E4">
+        Background="{DynamicResource BrushToolbarSurface}" Foreground="{DynamicResource BrushTextDialogPrimary}">
   <Grid RowDefinitions="*,Auto" Margin="22">
     <StackPanel Spacing="10" VerticalAlignment="Center">
       <TextBlock FontSize="15" FontWeight="SemiBold" Text="Save changes?"/>
-      <TextBlock x:Name="MessageText" FontSize="12" Foreground="#B6B8BE" TextWrapping="Wrap"/>
+      <TextBlock x:Name="MessageText" FontSize="12" Foreground="{DynamicResource BrushTextDialog}" TextWrapping="Wrap"/>
     </StackPanel>
     <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
       <Button MinWidth="94" Content="Save" Click="Save_Click" IsDefault="True"/>

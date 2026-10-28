@@ -71,9 +71,19 @@ public sealed class GitService
 
         using var process = new Process { StartInfo = startInfo };
         if (!process.Start()) throw new InvalidOperationException("Git could not be started.");
-        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+            await process.WaitForExitAsync();
+            try { await Task.WhenAll(stdout, stderr); } catch (IOException) { }
+            throw;
+        }
         return new GitCommandResult(process.ExitCode, await stdout, await stderr);
     }
 }

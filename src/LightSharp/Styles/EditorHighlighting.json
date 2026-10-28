@@ -1,0 +1,21 @@
+{
+  "csharpColors": {
+    "Comment": "#6A9955", "String": "#CE9178", "StringInterpolation": "#D4D4D4", "Char": "#CE9178",
+    "Preprocessor": "#C586C0", "ValueTypeKeywords": "#569CD6", "ReferenceTypeKeywords": "#569CD6", "MethodCall": "#DCDCAA",
+    "NumberLiteral": "#B5CEA8", "ThisOrBaseReference": "#569CD6", "NullOrValueKeywords": "#569CD6", "Keywords": "#569CD6",
+    "GotoKeywords": "#569CD6", "ContextKeywords": "#569CD6", "ExceptionKeywords": "#569CD6", "CheckedKeyword": "#569CD6",
+    "UnsafeKeywords": "#569CD6", "OperatorKeywords": "#569CD6", "ParameterModifiers": "#569CD6", "Modifiers": "#569CD6",
+    "Visibility": "#569CD6", "NamespaceKeywords": "#569CD6", "GetSetAddRemove": "#569CD6", "TrueFalse": "#569CD6",
+    "TypeKeywords": "#569CD6", "SemanticKeywords": "#569CD6", "Punctuation": "#D4D4D4", "Operator": "#D4D4D4", "Attribute": "#4EC9B0"
+  },
+  "xmlColors": {
+    "Comment": "#6A9955", "CData": "#CE9178", "DocType": "#569CD6", "XmlDeclaration": "#569CD6", "XmlTag": "#569CD6",
+    "AttributeName": "#9CDCFE", "AttributeValue": "#CE9178", "Entity": "#D7BA7D", "BrokenEntity": "#F44747"
+  },
+  "jsonColors": { "Bool": "#569CD6", "Number": "#B5CEA8", "String": "#CE9178", "Null": "#569CD6", "FieldName": "#9CDCFE", "Punctuation": "#D4D4D4" },
+  "semanticColors": { "Namespace": "#4EC9B0", "Type": "#4EC9B0", "Method": "#DCDCAA", "Property": "#9CDCFE" },
+  "syntaxErrorColor": "#F14C4C",
+  "attributePattern": "(?<=\\[)\\s*[\\w.]+(?=\\s*(?:\\(|,|\\]))",
+  "operatorPattern": "(?:>>>=|<<=|>>=|=>|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\+\\+|--|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<|>>|[=+\\-*/%&|^!~<>?:])",
+  "additionalKeywords": [ "record", "init", "required", "file", "scoped", "with", "not", "and", "or" ]
+}

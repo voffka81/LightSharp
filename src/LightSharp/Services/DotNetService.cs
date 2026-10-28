@@ -19,23 +19,35 @@ public sealed class DotNetService
         };
         foreach (var argument in arguments) psi.ArgumentList.Add(argument);
         var command = string.Join(" ", arguments);
-        _active = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        _active.OutputDataReceived += (_, e) => { if (e.Data is not null) output(e.Data); };
-        _active.ErrorDataReceived += (_, e) => { if (e.Data is not null) output(e.Data); };
+        var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        _active = process;
+        process.OutputDataReceived += (_, e) => { if (e.Data is not null) output(e.Data); };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) output(e.Data); };
         try
         {
-            _active.Start();
-            _active.BeginOutputReadLine();
-            _active.BeginErrorReadLine();
-            await _active.WaitForExitAsync(ct);
-            return _active.ExitCode;
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            await process.WaitForExitAsync(ct);
+            return process.ExitCode;
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException)
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+                try { await process.WaitForExitAsync(); } catch { }
+                output($"dotnet {command} was stopped.");
+                return -1;
+            }
             output($"Unable to run dotnet {command}: {ex.Message}");
             return -1;
         }
-        finally { _active?.Dispose(); _active = null; }
+        finally
+        {
+            process.Dispose();
+            if (ReferenceEquals(_active, process)) _active = null;
+        }
     }
 
     public void Stop()

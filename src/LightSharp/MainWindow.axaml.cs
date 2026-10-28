@@ -44,7 +44,6 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _diagnosticsTimer;
     private readonly DispatcherTimer _syntaxDiagnosticsTimer;
     private readonly DispatcherTimer _quickInfoTimer;
-    private string _outputView = "Problems";
     private string? _shortcutPrefix;
     private int _hoverOffset = -1;
     private bool _suppressNextCompletionNewline;
@@ -466,7 +465,9 @@ public sealed partial class MainWindow : Window
 
     private static void OpenContainingFolder(FileNode node)
     {
-        var path = node.IsDirectory ? node.FullPath : Path.GetDirectoryName(node.FullPath);
+        var path = node.IsDirectory && Directory.Exists(node.FullPath)
+            ? node.FullPath
+            : Path.GetDirectoryName(node.FullPath);
         if (path is null || !Directory.Exists(path)) return;
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
     }
@@ -639,7 +640,6 @@ public sealed partial class MainWindow : Window
 
     private void ShowOutputView(string view)
     {
-        _outputView = view;
         ProblemsTabButton.Classes.Set("selected", view == "Problems");
         OutputTabButton.Classes.Set("selected", view == "Output");
         TestsTabButton.Classes.Set("selected", view == "Tests");

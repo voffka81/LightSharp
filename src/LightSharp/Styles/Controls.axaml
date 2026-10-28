@@ -1,0 +1,73 @@
+<Styles xmlns="https://github.com/avaloniaui">
+  <Style Selector="TextBlock.overline">
+    <Setter Property="FontSize" Value="10"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource BrushTextMuted7}"/>
+  </Style>
+  <Style Selector="Button.chrome">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource BrushTextChrome}"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Padding" Value="10,5"/>
+    <Setter Property="CornerRadius" Value="4"/>
+  </Style>
+  <Style Selector="Button.chrome:pointerover"><Setter Property="Background" Value="{DynamicResource BrushHover}"/></Style>
+  <Style Selector="Button.launch">
+    <Setter Property="Background" Value="{DynamicResource BrushAccent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BrushAccentBorderHover}"/>
+    <Setter Property="Foreground" Value="{DynamicResource BrushWhite}"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Padding" Value="12,6"/>
+    <Setter Property="CornerRadius" Value="4"/>
+  </Style>
+  <Style Selector="Button.launch:pointerover"><Setter Property="Background" Value="{DynamicResource BrushAccentHover}"/></Style>
+  <Style Selector="Button.action">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource BrushTextAction}"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Padding" Value="10,5"/>
+    <Setter Property="CornerRadius" Value="4"/>
+  </Style>
+  <Style Selector="Button.action:pointerover"><Setter Property="Background" Value="{DynamicResource BrushBorder}"/></Style>
+  <Style Selector="Button.toolbar-icon">
+    <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="0"/>
+    <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="CornerRadius" Value="3"/>
+  </Style>
+  <Style Selector="Button.toolbar-icon:pointerover"><Setter Property="Background" Value="{DynamicResource BrushToolbarHover}"/></Style>
+  <Style Selector="Button.output-tab">
+    <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource BrushTextMuted7}"/><Setter Property="FontSize" Value="10"/>
+    <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="0,4"/><Setter Property="CornerRadius" Value="0"/>
+  </Style>
+  <Style Selector="Button.output-tab.selected">
+    <Setter Property="Foreground" Value="{DynamicResource BrushAccentSoft}"/><Setter Property="BorderBrush" Value="{DynamicResource BrushAccentPositive}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,2"/>
+  </Style>
+  <Style Selector="Button.doc-tab">
+    <Setter Property="Background" Value="{DynamicResource BrushPanelSurface}"/><Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}"/><Setter Property="FontSize" Value="12"/>
+    <Setter Property="Padding" Value="12,8"/><Setter Property="CornerRadius" Value="0"/>
+  </Style>
+  <Style Selector="Button.doc-tab.active">
+    <Setter Property="Background" Value="{DynamicResource BrushEditorSurface}"/><Setter Property="Foreground" Value="{DynamicResource BrushTextWhite}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BrushAccentBorder}"/><Setter Property="BorderThickness" Value="0,2,0,0"/>
+  </Style>
+  <Style Selector="Button.doc-tab:pointerover"><Setter Property="Foreground" Value="{DynamicResource BrushWhite}"/></Style>
+  <Style Selector="Button.tab-close">
+    <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource BrushTextMuted9}"/><Setter Property="Padding" Value="3,2"/>
+    <Setter Property="MinWidth" Value="22"/><Setter Property="CornerRadius" Value="3"/>
+  </Style>
+  <Style Selector="Button.tab-close:pointerover"><Setter Property="Background" Value="{DynamicResource BrushHoverStrong}"/><Setter Property="Foreground" Value="{DynamicResource BrushWhite}"/></Style>
+  <Style Selector="TreeViewItem"><Setter Property="Padding" Value="4,2"/><Setter Property="FontSize" Value="12"/><Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded}"/></Style>
+  <Style Selector="TreeViewItem:selected"><Setter Property="Background" Value="{DynamicResource BrushSelection}"/><Setter Property="Foreground" Value="{DynamicResource BrushTextSelected}"/></Style>
+
+  <Style Selector="TextBlock.label"><Setter Property="FontSize" Value="11"/><Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}"/></Style>
+  <Style Selector="Button.dialog-button"><Setter Property="MinWidth" Value="92"/><Setter Property="Padding" Value="14,7"/><Setter Property="CornerRadius" Value="3"/></Style>
+  <Style Selector="Button.create-button"><Setter Property="Background" Value="{DynamicResource BrushAccent}"/><Setter Property="BorderBrush" Value="{DynamicResource BrushAccentBorderHover}"/><Setter Property="Foreground" Value="{DynamicResource BrushWhite}"/></Style>
+  <Style Selector="ListBoxItem"><Setter Property="Padding" Value="10,8"/><Setter Property="CornerRadius" Value="3"/></Style>
+  <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="{DynamicResource BrushSelectionHover}"/><Setter Property="Foreground" Value="{DynamicResource BrushWhite}"/></Style>
+</Styles>

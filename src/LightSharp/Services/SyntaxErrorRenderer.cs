@@ -8,7 +8,7 @@ namespace LightSharp.Services;
 public sealed class SyntaxErrorRenderer : IBackgroundRenderer
 {
     private readonly TextEditor _editor;
-    private readonly Pen _pen = new(new SolidColorBrush(Color.Parse("#F14C4C")), 1.5);
+    private readonly Pen _pen = new(new SolidColorBrush(Color.Parse(EditorThemeConfiguration.Current.SyntaxErrorColor)), 1.5);
     private IReadOnlyList<(int Offset, int Length)> _errors = [];
 
     public SyntaxErrorRenderer(TextEditor editor)

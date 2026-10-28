@@ -93,10 +93,10 @@ public sealed class CSharpCompletionService : IDisposable
         {
             var color = symbol switch
             {
-                INamespaceSymbol => "#4EC9B0",
-                INamedTypeSymbol or ITypeParameterSymbol => "#4EC9B0",
-                IMethodSymbol => "#DCDCAA",
-                IPropertySymbol or IEventSymbol => "#9CDCFE",
+                INamespaceSymbol => EditorThemeConfiguration.Current.SemanticColor("Namespace"),
+                INamedTypeSymbol or ITypeParameterSymbol => EditorThemeConfiguration.Current.SemanticColor("Type"),
+                IMethodSymbol => EditorThemeConfiguration.Current.SemanticColor("Method"),
+                IPropertySymbol or IEventSymbol => EditorThemeConfiguration.Current.SemanticColor("Property"),
                 _ => null
             };
             if (color is not null && span.Length > 0)
