@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using LightSharp.Models;
@@ -10,37 +9,28 @@ public sealed class WorkspaceMenuController
 {
     private readonly Window _owner;
     private readonly DotNetCommandController _commands;
+    private readonly WorkspaceController _workspace;
     private readonly EditorWorkspaceController _editor;
     private readonly OutputPanelView _output;
-    private readonly ObservableCollection<FileNode> _roots;
-    private readonly ObservableCollection<FileNode> _projects;
-    private readonly ComboBox _startupProjectSelector;
-    private readonly Func<string?> _workspacePath;
-    private readonly Func<string?> _solutionPath;
-    private readonly Func<string, string?, Task> _loadWorkspace;
+    private readonly Func<FileNode?> _startupProject;
+    private readonly Action<FileNode?> _setStartupProject;
 
     public WorkspaceMenuController(
         Window owner,
         DotNetCommandController commands,
+        WorkspaceController workspace,
         EditorWorkspaceController editor,
         OutputPanelView output,
-        ObservableCollection<FileNode> roots,
-        ObservableCollection<FileNode> projects,
-        ComboBox startupProjectSelector,
-        Func<string?> workspacePath,
-        Func<string?> solutionPath,
-        Func<string, string?, Task> loadWorkspace)
+        Func<FileNode?> startupProject,
+        Action<FileNode?> setStartupProject)
     {
         _owner = owner;
         _commands = commands;
+        _workspace = workspace;
         _editor = editor;
         _output = output;
-        _roots = roots;
-        _projects = projects;
-        _startupProjectSelector = startupProjectSelector;
-        _workspacePath = workspacePath;
-        _solutionPath = solutionPath;
-        _loadWorkspace = loadWorkspace;
+        _startupProject = startupProject;
+        _setStartupProject = setStartupProject;
     }
 
     public async Task OpenFolderAsync()
@@ -48,7 +38,16 @@ public sealed class WorkspaceMenuController
         var folders = await _owner.StorageProvider.OpenFolderPickerAsync(
             new FolderPickerOpenOptions { Title = "Open .NET workspace", AllowMultiple = false });
         var path = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (path is not null) await _loadWorkspace(path, null);
+        if (path is not null) await _workspace.LoadAsync(path);
+    }
+
+    public static void OpenContainingFolder(FileNode node)
+    {
+        var path = node.IsDirectory && Directory.Exists(node.FullPath)
+            ? node.FullPath
+            : Path.GetDirectoryName(node.FullPath);
+        if (path is null || !Directory.Exists(path)) return;
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
     }
 
     public async Task OpenSolutionAsync()
@@ -62,7 +61,7 @@ public sealed class WorkspaceMenuController
         var solutionPath = files.FirstOrDefault()?.TryGetLocalPath();
         var directory = solutionPath is null ? null : Path.GetDirectoryName(solutionPath);
         if (solutionPath is not null && directory is not null)
-            await _loadWorkspace(directory, solutionPath);
+            await _workspace.LoadAsync(directory, solutionPath);
     }
 
     public async Task OpenFileAsync()
@@ -76,7 +75,7 @@ public sealed class WorkspaceMenuController
 
     public async Task AddExistingProjectAsync()
     {
-        var solutionPath = _solutionPath();
+        var solutionPath = _workspace.SolutionPath;
         if (solutionPath is null) return;
         var files = await _owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
@@ -86,15 +85,15 @@ public sealed class WorkspaceMenuController
         });
         var projectPath = files.FirstOrDefault()?.TryGetLocalPath();
         if (projectPath is null) return;
-        var solutionDirectory = Path.GetDirectoryName(solutionPath) ?? _workspacePath()!;
+        var solutionDirectory = Path.GetDirectoryName(solutionPath) ?? _workspace.WorkspacePath!;
         if (await _commands.RunAsync(solutionDirectory, "sln", solutionPath, "add", projectPath) == 0)
-            await _loadWorkspace(solutionDirectory, solutionPath);
+            await _workspace.LoadAsync(solutionDirectory, solutionPath);
     }
 
     public async Task RefreshWorkspaceAsync()
     {
-        if (_workspacePath() is { } path)
-            await _loadWorkspace(path, _solutionPath());
+        if (_workspace.WorkspacePath is { } path)
+            await _workspace.LoadAsync(path, _workspace.SolutionPath);
     }
 
     public async Task NewFileAsync()
@@ -112,8 +111,8 @@ public sealed class WorkspaceMenuController
 
     public async Task NewProjectAsync()
     {
-        var solutionPath = _solutionPath();
-        var workspacePath = _workspacePath();
+        var solutionPath = _workspace.SolutionPath;
+        var workspacePath = _workspace.WorkspacePath;
         var defaultLocation = solutionPath is not null
             ? Path.GetDirectoryName(solutionPath)
             : workspacePath ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
@@ -155,9 +154,9 @@ public sealed class WorkspaceMenuController
         var solutionDirectory = Path.GetDirectoryName(solutionPath) ?? dialog.Location;
         if (await _commands.RunAsync(solutionDirectory, "sln", solutionPath, "add", projectFile) != 0) return;
 
-        await _loadWorkspace(solutionDirectory, solutionPath);
-        _startupProjectSelector.SelectedItem = _projects.FirstOrDefault(project =>
-            string.Equals(project.FullPath, projectFile, StringComparison.OrdinalIgnoreCase));
+        await _workspace.LoadAsync(solutionDirectory, solutionPath);
+        _setStartupProject(_workspace.Projects.FirstOrDefault(project =>
+            string.Equals(project.FullPath, projectFile, StringComparison.OrdinalIgnoreCase)));
         _output.StatusMessage = $"Created {dialog.ProjectName}";
     }
 
@@ -165,19 +164,19 @@ public sealed class WorkspaceMenuController
     {
         if (_editor.ActiveDocument is { } activeDocument)
             return Path.GetDirectoryName(activeDocument.FullPath);
-        if (_startupProjectSelector.SelectedItem is FileNode startupProject)
+        if (_startupProject() is FileNode startupProject)
             return Path.GetDirectoryName(startupProject.FullPath);
-        if (_projects.FirstOrDefault() is FileNode project)
+        if (_workspace.Projects.FirstOrDefault() is FileNode project)
             return Path.GetDirectoryName(project.FullPath);
-        return _workspacePath();
+        return _workspace.WorkspacePath;
     }
 
     private string? GetNewFileDirectory(FileNode node)
     {
-        var solutionPath = _solutionPath();
+        var solutionPath = _workspace.SolutionPath;
         if (string.Equals(node.FullPath, solutionPath, StringComparison.OrdinalIgnoreCase))
         {
-            var project = _startupProjectSelector.SelectedItem as FileNode ?? _projects.FirstOrDefault();
+            var project = _startupProject() ?? _workspace.Projects.FirstOrDefault();
             return project is not null ? Path.GetDirectoryName(project.FullPath) : Path.GetDirectoryName(node.FullPath);
         }
         if (Path.GetExtension(node.FullPath).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
@@ -205,9 +204,9 @@ public sealed class WorkspaceMenuController
         try
         {
             await File.WriteAllTextAsync(filePath, string.Empty);
-            if (_workspacePath() is { } workspacePath)
-                await _loadWorkspace(workspacePath, _solutionPath());
-            var node = Flatten(_roots).FirstOrDefault(item =>
+            if (_workspace.WorkspacePath is { } workspacePath)
+                await _workspace.LoadAsync(workspacePath, _workspace.SolutionPath);
+            var node = Flatten(_workspace.Roots).FirstOrDefault(item =>
                 string.Equals(item.FullPath, filePath, StringComparison.OrdinalIgnoreCase))
                 ?? new FileNode { Name = Path.GetFileName(filePath), FullPath = filePath };
             await _editor.OpenDocumentAsync(node);

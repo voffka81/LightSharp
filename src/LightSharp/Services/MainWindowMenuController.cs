@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Avalonia.Input;
 using Dock.Model.Avalonia.Controls;
 using LightSharp.Models;
@@ -7,7 +6,7 @@ using LightSharp.Views;
 namespace LightSharp.Services;
 
 /// <summary>Handles commands initiated from the main menu, toolbar, and window shortcuts.</summary>
-public sealed class MainWindowMenuController : IDisposable
+public sealed class MainWindowMenuController
 {
     private readonly EditorWorkspaceController _editor;
     private readonly SearchReplaceController _search;
@@ -20,14 +19,6 @@ public sealed class MainWindowMenuController : IDisposable
     private readonly Func<Task> _refreshGitStatus;
     private readonly ToolDock _solutionExplorerDock;
     private readonly Tool _gitChangesTool;
-    private readonly MenuItem _gitMenu;
-    private readonly MenuItem _gitChangesMenu;
-    private readonly MenuItem _refreshGitMenu;
-    private readonly Separator _gitMenuSeparator;
-    private readonly MenuItem _initializeGitMenu;
-    private readonly MenuItem _stageAllGitMenu;
-    private readonly MenuItem _commitGitMenu;
-    private readonly IDisposable _gitAvailabilitySubscription;
 
     public MainWindowMenuController(
         IMessageBus messageBus,
@@ -40,14 +31,7 @@ public sealed class MainWindowMenuController : IDisposable
         DotNetCommandController commands,
         Func<Task> refreshGitStatus,
         ToolDock solutionExplorerDock,
-        Tool gitChangesTool,
-        MenuItem gitMenu,
-        MenuItem gitChangesMenu,
-        MenuItem refreshGitMenu,
-        Separator gitMenuSeparator,
-        MenuItem initializeGitMenu,
-        MenuItem stageAllGitMenu,
-        MenuItem commitGitMenu)
+        Tool gitChangesTool)
     {
         _editor = editor;
         _search = search;
@@ -60,17 +44,6 @@ public sealed class MainWindowMenuController : IDisposable
         _refreshGitStatus = refreshGitStatus;
         _solutionExplorerDock = solutionExplorerDock;
         _gitChangesTool = gitChangesTool;
-        _gitMenu = gitMenu;
-        _gitChangesMenu = gitChangesMenu;
-        _refreshGitMenu = refreshGitMenu;
-        _gitMenuSeparator = gitMenuSeparator;
-        _initializeGitMenu = initializeGitMenu;
-        _stageAllGitMenu = stageAllGitMenu;
-        _commitGitMenu = commitGitMenu;
-
-        _gitMenu.IsEnabled = false;
-        _gitAvailabilitySubscription = messageBus.Observe<GitRepositoryAvailabilityChanged>()
-            .Subscribe(UpdateGitMenuAvailability);
     }
 
     public Task OpenFolderAsync() => _workspace.OpenFolderAsync();
@@ -162,16 +135,4 @@ public sealed class MainWindowMenuController : IDisposable
         ShowGitChanges();
     }
 
-    private void UpdateGitMenuAvailability(GitRepositoryAvailabilityChanged message)
-    {
-        _gitMenu.IsEnabled = message.HasWorkspace;
-        _gitChangesMenu.IsVisible = message.HasRepository;
-        _refreshGitMenu.IsVisible = message.HasRepository;
-        _gitMenuSeparator.IsVisible = message.HasRepository;
-        _initializeGitMenu.IsVisible = message.HasWorkspace && !message.HasRepository;
-        _stageAllGitMenu.IsVisible = message.HasRepository;
-        _commitGitMenu.IsVisible = message.HasRepository;
-    }
-
-    public void Dispose() => _gitAvailabilitySubscription.Dispose();
 }

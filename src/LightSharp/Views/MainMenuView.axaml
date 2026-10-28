@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="LightSharp.Views.MainMenuView">
+  <Border Background="{DynamicResource BrushHeaderSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1">
+    <Grid ColumnDefinitions="Auto,*,Auto" Height="38">
+      <Menu Grid.Column="0" Background="Transparent" Padding="0" VerticalAlignment="Center">
+        <MenuItem Header="File">
+          <MenuItem Header="New Project...  Ctrl+Shift+N" Click="NewProject_Click"/>
+          <MenuItem Header="New File..." Click="NewFile_Click"/>
+          <Separator/>
+          <MenuItem Header="Open File...  Ctrl+O" Click="OpenFile_Click"/>
+          <MenuItem Header="Open Solution...  Ctrl+Shift+O" Click="OpenSolution_Click"/>
+          <MenuItem Header="Open Folder..." Click="OpenFolder_Click"/>
+          <Separator/>
+          <MenuItem Header="Save  Ctrl+S" Click="Save_Click"/>
+          <MenuItem Header="Save All  Ctrl+Shift+S" Click="SaveAll_Click"/>
+        </MenuItem>
+        <MenuItem Header="Edit">
+          <MenuItem Header="Find...  Ctrl+F" Click="Find_Click"/>
+          <MenuItem Header="Replace...  Ctrl+H" Click="Replace_Click"/>
+          <MenuItem Header="Find in Files...  Ctrl+Shift+F" Click="FindInFiles_Click"/>
+          <Separator/>
+          <MenuItem Header="Format Document  Ctrl+K, Ctrl+D" Click="FormatDocument_Click"/>
+          <MenuItem Header="Format Selection  Ctrl+K, Ctrl+F" Click="FormatSelection_Click"/>
+          <Separator/>
+          <MenuItem Header="Comment Selection  Ctrl+K, Ctrl+C" Click="Comment_Click"/>
+          <MenuItem Header="Uncomment Selection  Ctrl+K, Ctrl+U" Click="Uncomment_Click"/>
+          <Separator/>
+          <MenuItem Header="Select All  Ctrl+A" Click="SelectAll_Click"/>
+        </MenuItem>
+        <MenuItem Header="View"><MenuItem Header="Focus Output" Click="FocusOutput_Click"/></MenuItem>
+        <MenuItem x:Name="GitMenuItem" Header="Git">
+          <MenuItem x:Name="GitChangesMenuItem" Header="Git Changes" Click="ShowGitChanges_Click" IsVisible="False"/>
+          <MenuItem x:Name="RefreshGitMenuItem" Header="Refresh Status" Click="RefreshGit_Click" IsVisible="False"/>
+          <Separator x:Name="GitMenuSeparator" IsVisible="False"/>
+          <MenuItem x:Name="InitializeGitMenuItem" Header="Initialize Repository" Click="InitializeGit_Click" IsVisible="False"/>
+          <MenuItem x:Name="StageAllGitMenuItem" Header="Stage All Changes" Click="StageAllGit_Click" IsVisible="False"/>
+          <MenuItem x:Name="CommitGitMenuItem" Header="Commit All..." Click="ShowGitChanges_Click" IsVisible="False"/>
+        </MenuItem>
+        <MenuItem Header="Build  Ctrl+Shift+B" Click="Build_Click"/>
+        <MenuItem Header="Debug">
+          <MenuItem Header="Start  F5" Click="Start_Click"/>
+          <MenuItem Header="Start Without Debugging  Ctrl+F5" Click="Start_Click"/>
+          <MenuItem Header="Stop  Shift+F5" Click="Stop_Click"/>
+        </MenuItem>
+        <MenuItem Header="Test"><MenuItem Header="Run Tests  Ctrl+R, Ctrl+T" Click="Test_Click"/></MenuItem>
+      </Menu>
+      <TextBlock Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextMuted6}" FontSize="11" Text="LightSharp  ·  Lightweight C# IDE" />
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center" Spacing="4">
+        <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource BrushTextMuted2}" FontSize="10" Text="IDE PREVIEW"/>
+        <Ellipse Width="7" Height="7" Fill="{DynamicResource BrushAccentPositive}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

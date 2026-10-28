@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using LightSharp.Models;
 using LightSharp.Views;
 
@@ -8,7 +7,7 @@ public sealed class DotNetCommandController : IDisposable
 {
     private readonly DotNetService _dotnet;
     private readonly OutputPanelView _output;
-    private readonly Button _stopButton;
+    private readonly Action<bool> _setStopEnabled;
     private readonly Func<string?> _workspacePath;
     private readonly Func<string> _configuration;
     private readonly Func<FileNode?> _startupProject;
@@ -18,7 +17,7 @@ public sealed class DotNetCommandController : IDisposable
     public DotNetCommandController(
         DotNetService dotnet,
         OutputPanelView output,
-        Button stopButton,
+        Action<bool> setStopEnabled,
         Func<string?> workspacePath,
         Func<string> configuration,
         Func<FileNode?> startupProject,
@@ -26,7 +25,7 @@ public sealed class DotNetCommandController : IDisposable
     {
         _dotnet = dotnet;
         _output = output;
-        _stopButton = stopButton;
+        _setStopEnabled = setStopEnabled;
         _workspacePath = workspacePath;
         _configuration = configuration;
         _startupProject = startupProject;
@@ -48,7 +47,7 @@ public sealed class DotNetCommandController : IDisposable
     {
         _commandCts?.Cancel();
         _dotnet.Stop();
-        _stopButton.IsEnabled = false;
+        _setStopEnabled(false);
         _output.StatusMessage = "Stopped";
     }
 
@@ -74,12 +73,12 @@ public sealed class DotNetCommandController : IDisposable
         _output.IsVisible = true;
         var command = string.Join(" ", arguments);
         _output.StatusMessage = $"dotnet {command}...";
-        _stopButton.IsEnabled = true;
+        _setStopEnabled(true);
         var exitCode = await _dotnet.ExecuteAsync(workingDirectory, arguments, _appendOutput, commandCts.Token);
         if (!ReferenceEquals(_commandCts, commandCts)) return exitCode;
         _commandCts.Dispose();
         _commandCts = null;
-        _stopButton.IsEnabled = false;
+        _setStopEnabled(false);
         _output.StatusMessage = $"dotnet {command} exited with code {exitCode}";
         if (isTestRun)
             _output.TestSummary = exitCode == 0
