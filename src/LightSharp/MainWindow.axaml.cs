@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private readonly DotNetService _dotnet = new();
     private readonly GitService _git = new();
     private readonly CSharpCompletionService _completionService = new();
+    private readonly InputHandlerService _inputHandler = new();
     private readonly SyntaxErrorRenderer _syntaxErrorRenderer;
     private readonly SemanticColorizingTransformer _semanticColorizer;
     private readonly ObservableCollection<FileNode> _roots = [];
@@ -48,7 +49,6 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _diagnosticsTimer;
     private readonly DispatcherTimer _syntaxDiagnosticsTimer;
     private readonly DispatcherTimer _quickInfoTimer;
-    private string? _shortcutPrefix;
     private int _hoverOffset = -1;
     private bool _suppressNextCompletionNewline;
     private bool _suppressNextCompletionPeriod;
@@ -811,123 +811,36 @@ public sealed partial class MainWindow : Window
 
     private async void Window_KeyDown(object? sender, KeyEventArgs e)
     {
-        var key = e.Key;
-        var modifiers = e.KeyModifiers;
-        var ctrl = (modifiers & KeyModifiers.Control) != 0;
-        var shift = (modifiers & KeyModifiers.Shift) != 0;
+        var result = _inputHandler.HandleWindowKeyDown(e.Key, e.KeyModifiers);
+        if (!result.Handled) return;
 
-        if (_shortcutPrefix is not null)
+        e.Handled = true;
+        switch (result.Command)
         {
-            var prefix = _shortcutPrefix;
-            _shortcutPrefix = null;
-            if (prefix == "Ctrl+R" && key == Key.T && ctrl)
-            {
-                e.Handled = true;
-                Test_Click(this, new RoutedEventArgs());
-                return;
-            }
-            if (prefix == "Ctrl+K" && ctrl && key is Key.C or Key.U or Key.D or Key.F)
-            {
-                e.Handled = true;
-                if (key is Key.C or Key.U)
-                    ToggleLineComment(uncomment: key == Key.U);
-                else
-                    _ = FormatActiveDocumentAsync(selectionOnly: key == Key.F);
-                return;
-            }
-        }
-
-        if (ctrl && shift && key == Key.F)
-        {
-            e.Handled = true;
-            ShowSearchWindow(searchEntireSolution: true);
-            return;
-        }
-        if (ctrl && key == Key.H)
-        {
-            e.Handled = true;
-            ShowSearchWindow(searchEntireSolution: false, replaceMode: true);
-            return;
-        }
-        if (ctrl && key == Key.F)
-        {
-            e.Handled = true;
-            ShowSearchWindow(searchEntireSolution: false);
-            return;
-        }
-
-        if (ctrl && key == Key.K && !shift)
-        {
-            _shortcutPrefix = "Ctrl+K";
-            e.Handled = true;
-            return;
-        }
-        if (ctrl && key == Key.R && !shift)
-        {
-            _shortcutPrefix = "Ctrl+R";
-            e.Handled = true;
-            return;
-        }
-
-        if (ctrl && shift && key == Key.O)
-        {
-            e.Handled = true;
-            OpenSolution_Click(this, new RoutedEventArgs());
-        }
-        else if (ctrl && key == Key.O)
-        {
-            e.Handled = true;
-            await OpenFileAsync();
-        }
-        else if (ctrl && shift && key == Key.N)
-        {
-            e.Handled = true;
-            NewProject_Click(this, new RoutedEventArgs());
-        }
-        else if (ctrl && shift && key == Key.S)
-        {
-            e.Handled = true;
-            await SaveAllAsync();
-        }
-        else if (ctrl && key == Key.S)
-        {
-            e.Handled = true;
-            Save_Click(this, new RoutedEventArgs());
-        }
-        else if (ctrl && shift && key == Key.B)
-        {
-            e.Handled = true;
-            Build_Click(this, new RoutedEventArgs());
-        }
-        else if (key == Key.F5 && shift)
-        {
-            e.Handled = true;
-            Stop_Click(this, new RoutedEventArgs());
-        }
-        else if (key == Key.F5 && ctrl)
-        {
-            e.Handled = true;
-            Start_Click(this, new RoutedEventArgs());
-        }
-        else if (key == Key.F5)
-        {
-            e.Handled = true;
-            Start_Click(this, new RoutedEventArgs());
-        }
-        else if (ctrl && key == Key.F4)
-        {
-            e.Handled = true;
-            if (_activeDocument is not null) await CloseDocumentAsync(_activeDocument);
-        }
-        else if (ctrl && key == Key.A)
-        {
-            e.Handled = true;
-            if (Editor.IsFocused) Editor.SelectAll();
-        }
-        else if (ctrl && key == Key.Tab)
-        {
-            e.Handled = true;
-            ActivateAdjacentDocument(shift ? -1 : 1);
+            case InputCommand.Find: ShowSearchWindow(searchEntireSolution: false); break;
+            case InputCommand.Replace: ShowSearchWindow(searchEntireSolution: false, replaceMode: true); break;
+            case InputCommand.FindInFiles: ShowSearchWindow(searchEntireSolution: true); break;
+            case InputCommand.OpenSolution: OpenSolution_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.OpenFile: await OpenFileAsync(); break;
+            case InputCommand.NewProject: NewProject_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.Save: Save_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.SaveAll: await SaveAllAsync(); break;
+            case InputCommand.Build: Build_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.Start: Start_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.Stop: Stop_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.CloseDocument:
+                if (_activeDocument is not null) await CloseDocumentAsync(_activeDocument);
+                break;
+            case InputCommand.SelectAll:
+                if (Editor.IsFocused) Editor.SelectAll();
+                break;
+            case InputCommand.NextDocument: ActivateAdjacentDocument(1); break;
+            case InputCommand.PreviousDocument: ActivateAdjacentDocument(-1); break;
+            case InputCommand.Test: Test_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.ToggleLineComment: ToggleLineComment(uncomment: false); break;
+            case InputCommand.UncommentLine: ToggleLineComment(uncomment: true); break;
+            case InputCommand.FormatDocument: _ = FormatActiveDocumentAsync(selectionOnly: false); break;
+            case InputCommand.FormatSelection: _ = FormatActiveDocumentAsync(selectionOnly: true); break;
         }
     }
 
