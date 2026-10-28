@@ -1863,8 +1863,9 @@ public sealed partial class MainWindow : Window
         foreach (var item in _documents) item.IsActive = ReferenceEquals(item, document);
         _activeDocument = document;
         _loadingDocument = true;
-        Editor.SyntaxHighlighting = EditorHighlightingService.ForFile(document?.FullPath);
         Editor.Text = document?.Text ?? string.Empty;
+        Editor.SyntaxHighlighting = EditorHighlightingService.ForFile(document?.FullPath);
+        Editor.TextArea.TextView.Redraw();
         _loadingDocument = false;
         SyncSolutionExplorerToActiveDocument();
         EmptyEditorText.IsVisible = document is null;
