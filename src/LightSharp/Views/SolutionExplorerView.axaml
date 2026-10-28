@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="using:LightSharp.Models"
+             x:Class="LightSharp.Views.SolutionExplorerView">
+  <Border Background="{DynamicResource BrushPanelSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,1,0">
+    <Grid RowDefinitions="Auto,Auto,*">
+      <Grid ColumnDefinitions="*,Auto" Height="42" Margin="14,0,10,0"><TextBlock Classes="overline" Text="SOLUTION EXPLORER" VerticalAlignment="Center"/><Button Classes="chrome" Grid.Column="1" Content="···" Padding="7,2"/></Grid>
+      <Border Grid.Row="1" Margin="10,0,10,7" Background="{DynamicResource BrushEditorSurface}" BorderBrush="{DynamicResource BrushInsetBorder}" BorderThickness="1" CornerRadius="4" Padding="8,5"><TextBlock Foreground="{DynamicResource BrushTextMuted3}" FontSize="11" Text="⌕  Filter solution"/></Border>
+      <TreeView x:Name="Tree" Grid.Row="2" Padding="6,2" DoubleTapped="Tree_DoubleTapped">
+        <TreeView.ItemTemplate><TreeDataTemplate x:DataType="models:FileNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="8" RightTapped="Item_RightTapped"><Grid Width="24" Height="18"><Path Width="15" Height="12" HorizontalAlignment="Left" VerticalAlignment="Center" Data="M1,3 L6,3 L8,5 L15,5 L15,13 L1,13 Z" Fill="{DynamicResource BrushFolderFill}" Stroke="{DynamicResource BrushFolderBorder}" StrokeThickness="1" IsVisible="{Binding IsDirectory}"/><TextBlock Width="24" FontSize="8" FontWeight="SemiBold" Foreground="{DynamicResource BrushIconBlue}" VerticalAlignment="Center" IsVisible="{Binding IsFile}" Text="{Binding Glyph}"/></Grid><TextBlock FontSize="12" Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
+      </TreeView>
+    </Grid>
+  </Border>
+</UserControl>
