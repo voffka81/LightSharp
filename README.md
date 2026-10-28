@@ -1,6 +1,6 @@
 # LightSharp
 
-A performance-focused proof-of-concept C#/.NET editor for macOS and other desktop platforms. It deliberately avoids Electron, Node.js, and an extension host.
+A performance-focused proof-of-concept C#/.NET editor for Windows and other desktop platforms. It deliberately avoids Electron, Node.js, and an extension host.
 
 ## Current milestone
 
