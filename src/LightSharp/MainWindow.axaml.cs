@@ -334,6 +334,8 @@ public sealed partial class MainWindow : Window
         if (!node.IsDirectory)
             Add("Open", async (_, _) => await OpenDocumentAsync(node));
 
+        Add("Add > New File...", async (_, _) => await CreateFileInNodeAsync(node));
+
         if (isSolution)
         {
             if (menu.Items.Count > 0) Separator();
@@ -384,6 +386,82 @@ public sealed partial class MainWindow : Window
     {
         if (_workspacePath is null) return;
         await LoadWorkspaceAsync(_workspacePath, _solutionPath);
+    }
+
+    private async void NewFile_Click(object? sender, RoutedEventArgs e)
+    {
+        var directory = GetDefaultNewFileDirectory();
+        if (directory is not null) await CreateNewFileAsync(directory);
+        else StatusText.Text = "Open a workspace or project first";
+    }
+
+    private Task CreateFileInNodeAsync(FileNode node)
+    {
+        var directory = GetNewFileDirectory(node);
+        return directory is null
+            ? Task.CompletedTask
+            : CreateNewFileAsync(directory);
+    }
+
+    private string? GetDefaultNewFileDirectory()
+    {
+        if (_activeDocument is not null)
+            return Path.GetDirectoryName(_activeDocument.FullPath);
+        if (StartupProjectSelector.SelectedItem is FileNode startupProject)
+            return Path.GetDirectoryName(startupProject.FullPath);
+        if (_projects.FirstOrDefault() is FileNode project)
+            return Path.GetDirectoryName(project.FullPath);
+        return _workspacePath;
+    }
+
+    private string? GetNewFileDirectory(FileNode node)
+    {
+        if (string.Equals(node.FullPath, _solutionPath, StringComparison.OrdinalIgnoreCase))
+        {
+            var project = StartupProjectSelector.SelectedItem as FileNode ?? _projects.FirstOrDefault();
+            return project is not null
+                ? Path.GetDirectoryName(project.FullPath)
+                : Path.GetDirectoryName(node.FullPath);
+        }
+        if (Path.GetExtension(node.FullPath).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            return Path.GetDirectoryName(node.FullPath);
+        return node.IsDirectory ? node.FullPath : Path.GetDirectoryName(node.FullPath);
+    }
+
+    private async Task CreateNewFileAsync(string directory)
+    {
+        if (!Directory.Exists(directory))
+        {
+            StatusText.Text = "The selected folder no longer exists";
+            return;
+        }
+
+        var dialog = new NewFileDialog();
+        if (await dialog.ShowDialog<bool>(this) is false) return;
+        var filePath = Path.GetFullPath(Path.Combine(directory, dialog.FileName));
+        if (File.Exists(filePath) || Directory.Exists(filePath))
+        {
+            StatusText.Text = $"A file named {dialog.FileName} already exists";
+            return;
+        }
+
+        try
+        {
+            await File.WriteAllTextAsync(filePath, string.Empty);
+            if (_workspacePath is not null)
+                await LoadWorkspaceAsync(_workspacePath, _solutionPath);
+
+            var node = Flatten(_roots).FirstOrDefault(item =>
+                string.Equals(item.FullPath, filePath, StringComparison.OrdinalIgnoreCase))
+                ?? new FileNode { Name = Path.GetFileName(filePath), FullPath = filePath };
+            await OpenDocumentAsync(node);
+            StatusText.Text = $"Created {Path.GetFileName(filePath)}";
+        }
+        catch (Exception ex)
+        {
+            AppendOutput($"Unable to create file: {ex.Message}");
+            StatusText.Text = "File creation failed";
+        }
     }
 
     private static void OpenContainingFolder(FileNode node)

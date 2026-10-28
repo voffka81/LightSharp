@@ -1,0 +1,20 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="LightSharp.NewFileDialog"
+        Title="Add New File" Width="480" Height="240" MinWidth="420" MinHeight="220"
+        WindowStartupLocation="CenterOwner" CanResize="False" Background="#25262A" Foreground="#E0E1E4">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Padding="20,16" Background="#292A2E" BorderBrush="#3A3B40" BorderThickness="0,0,0,1">
+      <StackPanel Spacing="4"><TextBlock FontSize="17" FontWeight="SemiBold" Text="Add New File"/><TextBlock FontSize="12" Foreground="#9698A0" Text="Create a file in the selected project folder."/></StackPanel>
+    </Border>
+    <StackPanel Grid.Row="1" Margin="20,18" Spacing="7">
+      <TextBlock Foreground="#AEB0B7" FontSize="11" Text="FILE NAME"/>
+      <TextBox x:Name="FileNameBox" Height="32" VerticalContentAlignment="Center" Text="NewFile.cs"/>
+      <TextBlock x:Name="ValidationText" Foreground="#E08A8A" FontSize="11" IsVisible="False"/>
+    </StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="16,0,20,16" Spacing="8">
+      <Button MinWidth="88" Content="Cancel" Click="Cancel_Click"/>
+      <Button MinWidth="88" Content="Create" Background="#6A9B35" Foreground="White" IsDefault="True" Click="Create_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>
