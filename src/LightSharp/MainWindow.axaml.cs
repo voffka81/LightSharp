@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _commandCts;
     private CancellationTokenSource? _completionRequestCts;
     private CancellationTokenSource? _semanticDiagnosticsCts;
+    private string? _lastSemanticDiagnosticsFailure;
     private CancellationTokenSource? _quickInfoCts;
     private CompletionWindow? _completionWindow;
     private SearchReplaceWindow? _searchWindow;
@@ -1822,12 +1823,19 @@ public sealed partial class MainWindow : Window
                 !string.Equals(Editor.Text, source, StringComparison.Ordinal)) return;
 
             _semanticColorizer.SetHighlights(semanticHighlights);
+            _lastSemanticDiagnosticsFailure = null;
             DisplayDiagnostics(diagnostics.Count > 0 ? diagnostics : parseDiagnostics);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine($"Live C# diagnostics unavailable: {ex.Message}");
+            var failure = ex.GetBaseException().Message;
+            if (!string.Equals(_lastSemanticDiagnosticsFailure, failure, StringComparison.Ordinal))
+            {
+                _lastSemanticDiagnosticsFailure = failure;
+                AppendOutput($"Live C# semantic highlighting unavailable: {failure}");
+            }
         }
     }
 
@@ -1865,6 +1873,10 @@ public sealed partial class MainWindow : Window
         _loadingDocument = true;
         Editor.Text = document?.Text ?? string.Empty;
         Editor.SyntaxHighlighting = EditorHighlightingService.ForFile(document?.FullPath);
+        // SyntaxHighlighting registers its colorizer after document activation. Keep
+        // semantic colors last so they override lexical colors for the same spans.
+        Editor.TextArea.TextView.LineTransformers.Remove(_semanticColorizer);
+        Editor.TextArea.TextView.LineTransformers.Add(_semanticColorizer);
         Editor.TextArea.TextView.Redraw();
         _loadingDocument = false;
         SyncSolutionExplorerToActiveDocument();
