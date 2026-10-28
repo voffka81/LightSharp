@@ -5,7 +5,6 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using AvaloniaEdit.CodeCompletion;
 using Dock.Avalonia.Controls;
 using Dock.Model.Core;
 using Dock.Model.Avalonia;
@@ -13,7 +12,6 @@ using Dock.Model.Avalonia.Controls;
 using LightSharp.Models;
 using LightSharp.Services;
 using LightSharp.Views;
-using Microsoft.CodeAnalysis.CSharp;
 
 namespace LightSharp;
 
@@ -27,21 +25,16 @@ public sealed partial class MainWindow : Window
     private readonly OutputPanelController _outputPanelController;
     private readonly SolutionExplorerController _solutionExplorerController;
     private readonly EditorWorkspaceController _editorWorkspaceController;
+    private readonly SearchReplaceController _searchController;
     private readonly InputHandlerService _inputHandler = new();
     private readonly ObservableCollection<FileNode> _roots = [];
     private readonly ObservableCollection<FileNode> _projects = [];
-    private readonly ObservableCollection<EditorDocument> _documents = [];
     private readonly List<IDisposable> _messageSubscriptions = [];
     private string? _workspacePath;
     private string? _solutionPath;
     private ToolDock? _solutionExplorerDock;
     private Tool? _gitChangesTool;
-    private EditorDocument? _activeDocument;
     private CancellationTokenSource? _commandCts;
-    private SearchReplaceWindow? _searchWindow;
-    private Dictionary<string, SearchUndoEntry>? _lastSearchUndo;
-
-    private sealed record SearchUndoEntry(string Before, string After);
     private readonly DispatcherTimer _diagnosticsTimer;
 
     public MainWindow()
@@ -75,9 +68,11 @@ public sealed partial class MainWindow : Window
                 OpenContainingFolder,
                 RefreshWorkspaceAsync));
         _editorWorkspaceController = new EditorWorkspaceController(
-            EditorSurface, _documents, _projects, OutputPanel, _messageBus,
-            document => ActivateDocument(document),
-            CloseDocumentAsync);
+            EditorSurface, _projects, OutputPanel, _messageBus, this,
+            SolutionExplorerPanel.SelectAndReveal);
+        _searchController = new SearchReplaceController(
+            this, _editorWorkspaceController, EditorSurface, _roots, _projects,
+            () => _solutionPath, () => _ = RefreshGitStatusAsync(), OutputPanel);
         using (var iconStream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://LightSharp/Assets/LightSharp.png")))
             Icon = new WindowIcon(iconStream);
         InitializeDockLayout();
@@ -329,7 +324,7 @@ public sealed partial class MainWindow : Window
             _roots.Add(root);
         }
         StartupProjectSelector.SelectedItem = _projects.FirstOrDefault();
-        SyncSolutionExplorerToActiveDocument();
+        if (_editorWorkspaceController.ActiveDocument is { } active) SolutionExplorerPanel.SelectAndReveal(active.FullPath);
         OutputPanel.StatusMessage = "Ready";
         await RefreshGitStatusAsync();
     }
@@ -373,8 +368,8 @@ public sealed partial class MainWindow : Window
 
     private string? GetDefaultNewFileDirectory()
     {
-        if (_activeDocument is not null)
-            return Path.GetDirectoryName(_activeDocument.FullPath);
+        if (_editorWorkspaceController.ActiveDocument is { } activeDocument)
+            return Path.GetDirectoryName(activeDocument.FullPath);
         if (StartupProjectSelector.SelectedItem is FileNode startupProject)
             return Path.GetDirectoryName(startupProject.FullPath);
         if (_projects.FirstOrDefault() is FileNode project)
@@ -441,53 +436,11 @@ public sealed partial class MainWindow : Window
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
     }
 
-    private async Task OpenDocumentAsync(FileNode node)
-    {
-        try
-        {
-            var document = _documents.FirstOrDefault(item =>
-                string.Equals(item.FullPath, node.FullPath, StringComparison.OrdinalIgnoreCase));
-            if (document is null)
-            {
-                document = new EditorDocument(node.FullPath, await File.ReadAllTextAsync(node.FullPath));
-                _documents.Add(document);
-            }
-            ActivateDocument(document);
-        }
-        catch (Exception ex) { AppendOutput(ex.Message); }
-    }
+    private Task OpenDocumentAsync(FileNode node) => _editorWorkspaceController.OpenDocumentAsync(node);
 
-    private async void Save_Click(object? sender, RoutedEventArgs e)
-    {
-        if (_activeDocument is null) return;
-        try
-        {
-            await File.WriteAllTextAsync(_activeDocument.FullPath, _activeDocument.Text);
-            _activeDocument.MarkSaved();
-            OutputPanel.StatusMessage = $"Saved {_activeDocument.Name}";
-        }
-        catch (Exception ex) { AppendOutput(ex.Message); }
-    }
+    private async void Save_Click(object? sender, RoutedEventArgs e) => await _editorWorkspaceController.SaveActiveDocumentAsync();
 
-    private async Task SaveAllAsync()
-    {
-        foreach (var document in _documents.Where(document => document.IsDirty).ToArray())
-        {
-            try
-            {
-                await File.WriteAllTextAsync(document.FullPath, document.Text);
-                document.MarkSaved();
-            }
-            catch (Exception ex)
-            {
-                AppendOutput($"Unable to save {document.Name}: {ex.Message}");
-                OutputPanel.StatusMessage = $"Could not save {document.Name}";
-                return;
-            }
-        }
-        OutputPanel.StatusMessage = "All files saved";
-    }
-
+    private Task SaveAllAsync() => _editorWorkspaceController.SaveAllAsync();
     private async void SaveAll_Click(object? sender, RoutedEventArgs e) => await SaveAllAsync();
 
     private string SelectedConfiguration =>
@@ -642,33 +595,6 @@ public sealed partial class MainWindow : Window
     {
         _editorWorkspaceController.NavigateTo(problem.Line, problem.Column);
     }
-    private async Task CloseDocumentAsync(EditorDocument document)
-    {
-        if (document.IsDirty)
-        {
-            var decision = await new SaveChangesDialog(document.Name).ShowDialog<SaveChangesChoice>(this);
-            if (decision == SaveChangesChoice.Cancel) return;
-            if (decision == SaveChangesChoice.Save)
-            {
-                try
-                {
-                    await File.WriteAllTextAsync(document.FullPath, document.Text);
-                    document.MarkSaved();
-                }
-                catch (Exception ex)
-                {
-                    AppendOutput($"Unable to save {document.Name}: {ex.Message}");
-                    OutputPanel.StatusMessage = $"Could not save {document.Name}";
-                    return;
-                }
-            }
-        }
-
-        var wasActive = ReferenceEquals(_activeDocument, document);
-        _documents.Remove(document);
-        if (wasActive) ActivateDocument(_documents.LastOrDefault());
-    }
-
     private async void Window_KeyDown(object? sender, KeyEventArgs e)
     {
         var result = _inputHandler.HandleWindowKeyDown(e.Key, e.KeyModifiers);
@@ -677,9 +603,9 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
         switch (result.Command)
         {
-            case InputCommand.Find: ShowSearchWindow(searchEntireSolution: false); break;
-            case InputCommand.Replace: ShowSearchWindow(searchEntireSolution: false, replaceMode: true); break;
-            case InputCommand.FindInFiles: ShowSearchWindow(searchEntireSolution: true); break;
+            case InputCommand.Find: _searchController.ShowSearchWindow(searchEntireSolution: false); break;
+            case InputCommand.Replace: _searchController.ShowSearchWindow(searchEntireSolution: false, replaceMode: true); break;
+            case InputCommand.FindInFiles: _searchController.ShowSearchWindow(searchEntireSolution: true); break;
             case InputCommand.OpenSolution: OpenSolution_Click(this, new RoutedEventArgs()); break;
             case InputCommand.OpenFile: await OpenFileAsync(); break;
             case InputCommand.NewProject: NewProject_Click(this, new RoutedEventArgs()); break;
@@ -689,13 +615,14 @@ public sealed partial class MainWindow : Window
             case InputCommand.Start: Start_Click(this, new RoutedEventArgs()); break;
             case InputCommand.Stop: Stop_Click(this, new RoutedEventArgs()); break;
             case InputCommand.CloseDocument:
-                if (_activeDocument is not null) await CloseDocumentAsync(_activeDocument);
+                if (_editorWorkspaceController.ActiveDocument is { } activeDocument)
+                    await _editorWorkspaceController.CloseDocumentAsync(activeDocument);
                 break;
             case InputCommand.SelectAll:
-                if (EditorSurface.IsEditorFocused) EditorSurface.SelectAll();
+                _editorWorkspaceController.SelectAllIfFocused();
                 break;
-            case InputCommand.NextDocument: ActivateAdjacentDocument(1); break;
-            case InputCommand.PreviousDocument: ActivateAdjacentDocument(-1); break;
+            case InputCommand.NextDocument: _editorWorkspaceController.ActivateAdjacentDocument(1); break;
+            case InputCommand.PreviousDocument: _editorWorkspaceController.ActivateAdjacentDocument(-1); break;
             case InputCommand.Test: Test_Click(this, new RoutedEventArgs()); break;
             case InputCommand.ToggleLineComment: _editorWorkspaceController.ToggleLineComment(uncomment: false); break;
             case InputCommand.UncommentLine: _editorWorkspaceController.ToggleLineComment(uncomment: true); break;
@@ -704,228 +631,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void Find_Click(object? sender, RoutedEventArgs e) => ShowSearchWindow(searchEntireSolution: false);
-    private void Replace_Click(object? sender, RoutedEventArgs e) => ShowSearchWindow(searchEntireSolution: false, replaceMode: true);
-    private void FindInFiles_Click(object? sender, RoutedEventArgs e) => ShowSearchWindow(searchEntireSolution: true);
-
-    private void ShowSearchWindow(bool searchEntireSolution, bool replaceMode = false)
-    {
-        if (_searchWindow is { IsVisible: true })
-        {
-            _searchWindow.Activate();
-            return;
-        }
-
-        var initialQuery = EditorSurface.SelectionLength > 0 ? EditorSurface.SelectedText : string.Empty;
-        var window = new SearchReplaceWindow(
-            initialQuery,
-            searchEntireSolution,
-            SearchAsync,
-            FindNextAsync,
-            ApplySearchHitsAsync,
-            UndoSearchHitsAsync,
-            OpenSearchHitAsync,
-            replaceMode,
-            _lastSearchUndo is { Count: > 0 });
-        _searchWindow = window;
-        window.Closed += (_, _) =>
-        {
-            if (ReferenceEquals(_searchWindow, window)) _searchWindow = null;
-        };
-        window.Show(this);
-    }
-
-    private Task<IReadOnlyList<SearchHit>> SearchAsync(SearchRequest request, bool entireSolution)
-    {
-        if (!entireSolution && _activeDocument is null)
-            return Task.FromResult<IReadOnlyList<SearchHit>>([]);
-        var activePath = _activeDocument?.FullPath;
-        IEnumerable<string> paths = entireSolution
-            ? Flatten(_roots)
-                .Where(node => node.IsFile && IsSearchableTextFile(node.FullPath))
-                .Select(node => node.FullPath)
-                .Concat(_projects.Select(project => project.FullPath))
-                .Concat(_solutionPath is null ? [] : [_solutionPath])
-                .Concat(activePath is null ? [] : [activePath])
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-            : [activePath!];
-        var openTexts = _documents.ToDictionary(document => document.FullPath, document => document.Text,
-            StringComparer.OrdinalIgnoreCase);
-        return SearchReplaceService.SearchAsync(paths, openTexts, request);
-    }
-
-    private Task<SearchHit?> FindNextAsync(SearchRequest request)
-    {
-        if (_activeDocument is null) return Task.FromResult<SearchHit?>(null);
-        var hits = SearchReplaceService.FindInText(_activeDocument.FullPath, _activeDocument.Text, request);
-        if (hits.Count == 0) return Task.FromResult<SearchHit?>(null);
-        var start = EditorSurface.SelectionLength > 0
-            ? EditorSurface.SelectionStart + EditorSurface.SelectionLength
-            : EditorSurface.CaretOffset;
-        return Task.FromResult<SearchHit?>(hits.FirstOrDefault(hit => hit.Start >= start) ?? hits[0]);
-    }
-
-    private static bool IsSearchableTextFile(string path) => Path.GetExtension(path).ToLowerInvariant() is
-        ".cs" or ".csx" or ".xaml" or ".axaml" or ".xml" or ".json" or ".config" or ".csproj" or
-        ".props" or ".targets" or ".sln" or ".slnx" or ".md" or ".txt" or ".editorconfig" or
-        ".yml" or ".yaml" or ".razor" or ".cshtml";
-
-    private async Task<int> ApplySearchHitsAsync(IReadOnlyList<SearchHit> hits)
-    {
-        var undoEntries = new Dictionary<string, SearchUndoEntry>(StringComparer.OrdinalIgnoreCase);
-        var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var replacementCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var group in hits.GroupBy(hit => hit.FilePath, StringComparer.OrdinalIgnoreCase))
-        {
-            var document = _documents.FirstOrDefault(item =>
-                string.Equals(item.FullPath, group.Key, StringComparison.OrdinalIgnoreCase));
-            var originalText = document?.Text ?? await File.ReadAllTextAsync(group.Key);
-            var updatedText = originalText;
-            var applicableHits = group
-                .Where(hit => hit.Start >= 0 && hit.Start + hit.Length <= originalText.Length &&
-                              string.Equals(originalText.Substring(hit.Start, hit.Length), hit.MatchedText, StringComparison.Ordinal))
-                .OrderByDescending(hit => hit.Start)
-                .ToArray();
-            if (applicableHits.Length == 0) continue;
-
-            foreach (var hit in applicableHits)
-                updatedText = updatedText[..hit.Start] + hit.ReplacementText + updatedText[(hit.Start + hit.Length)..];
-            undoEntries[group.Key] = new SearchUndoEntry(originalText, updatedText);
-            replacements[group.Key] = updatedText;
-            replacementCounts[group.Key] = applicableHits.Length;
-        }
-
-        if (replacements.Count == 0) return 0;
-        var changedDiskFiles = new List<string>();
-        try
-        {
-            foreach (var path in replacements.Keys.ToArray())
-            {
-                var document = _documents.FirstOrDefault(open =>
-                    string.Equals(open.FullPath, path, StringComparison.OrdinalIgnoreCase));
-                if (document is not null)
-                {
-                    if (!string.Equals(document.Text, undoEntries[path].Before, StringComparison.Ordinal))
-                    {
-                        replacements.Remove(path);
-                        undoEntries.Remove(path);
-                        replacementCounts.Remove(path);
-                        continue;
-                    }
-                    continue;
-                }
-                var latestText = await File.ReadAllTextAsync(path);
-                if (!string.Equals(latestText, undoEntries[path].Before, StringComparison.Ordinal))
-                {
-                    replacements.Remove(path);
-                    undoEntries.Remove(path);
-                    replacementCounts.Remove(path);
-                    continue;
-                }
-                await File.WriteAllTextAsync(path, replacements[path]);
-                changedDiskFiles.Add(path);
-            }
-        }
-        catch
-        {
-            foreach (var path in changedDiskFiles)
-                try { await File.WriteAllTextAsync(path, undoEntries[path].Before); } catch { }
-            throw;
-        }
-
-        foreach (var item in replacements.ToArray())
-        {
-            var document = _documents.FirstOrDefault(open =>
-                string.Equals(open.FullPath, item.Key, StringComparison.OrdinalIgnoreCase));
-            if (document is null) continue;
-            if (string.Equals(document.Text, undoEntries[item.Key].After, StringComparison.Ordinal))
-                continue;
-            if (!string.Equals(document.Text, undoEntries[item.Key].Before, StringComparison.Ordinal))
-            {
-                replacements.Remove(item.Key);
-                undoEntries.Remove(item.Key);
-                replacementCounts.Remove(item.Key);
-                continue;
-            }
-            if (ReferenceEquals(document, _activeDocument) && EditorSurface.HasDocument)
-                EditorSurface.ReplaceAllText(item.Value);
-            else
-                document.Text = item.Value;
-        }
-
-        _lastSearchUndo = undoEntries;
-        _ = RefreshGitStatusAsync();
-        return replacementCounts.Values.Sum();
-    }
-
-    private async Task<int> UndoSearchHitsAsync()
-    {
-        if (_lastSearchUndo is null || _lastSearchUndo.Count == 0) return 0;
-        var restored = 0;
-        foreach (var item in _lastSearchUndo)
-        {
-            var document = _documents.FirstOrDefault(open =>
-                string.Equals(open.FullPath, item.Key, StringComparison.OrdinalIgnoreCase));
-            var currentText = document?.Text ?? await File.ReadAllTextAsync(item.Key);
-            if (!string.Equals(currentText, item.Value.After, StringComparison.Ordinal)) continue;
-
-            if (document is null)
-                await File.WriteAllTextAsync(item.Key, item.Value.Before);
-            else if (ReferenceEquals(document, _activeDocument) && EditorSurface.HasDocument)
-                EditorSurface.ReplaceAllText(item.Value.Before);
-            else
-                document.Text = item.Value.Before;
-            restored++;
-        }
-        _lastSearchUndo = null;
-        if (restored > 0) _ = RefreshGitStatusAsync();
-        return restored;
-    }
-
-    private async Task OpenSearchHitAsync(SearchHit hit)
-    {
-        var document = _documents.FirstOrDefault(item =>
-            string.Equals(item.FullPath, hit.FilePath, StringComparison.OrdinalIgnoreCase));
-        if (document is null)
-        {
-            await OpenDocumentAsync(new FileNode { Name = Path.GetFileName(hit.FilePath), FullPath = hit.FilePath });
-            document = _documents.FirstOrDefault(item =>
-                string.Equals(item.FullPath, hit.FilePath, StringComparison.OrdinalIgnoreCase));
-        }
-        if (document is null) return;
-        ActivateDocument(document);
-        if (!EditorSurface.HasDocument) return;
-        var start = Math.Clamp(hit.Start, 0, EditorSurface.TextLength);
-        var length = Math.Clamp(hit.Length, 0, EditorSurface.TextLength - start);
-        EditorSurface.Select(start, length);
-        EditorSurface.ScrollToLine(Math.Clamp(hit.Line, 1, EditorSurface.LineCount));
-        EditorSurface.FocusEditor();
-    }
-
-    private void ActivateAdjacentDocument(int direction)
-    {
-        if (_documents.Count == 0) return;
-        var currentIndex = _activeDocument is null ? -1 : _documents.IndexOf(_activeDocument);
-        var nextIndex = (currentIndex + direction + _documents.Count) % _documents.Count;
-        ActivateDocument(_documents[nextIndex]);
-    }
-
-    private void Search_KeyDown(object? sender, KeyEventArgs e)
+    private void Find_Click(object? sender, RoutedEventArgs e) => _searchController.ShowSearchWindow(searchEntireSolution: false);
+    private void Replace_Click(object? sender, RoutedEventArgs e) => _searchController.ShowSearchWindow(searchEntireSolution: false, replaceMode: true);
+    private void FindInFiles_Click(object? sender, RoutedEventArgs e) => _searchController.ShowSearchWindow(searchEntireSolution: true);
+    private async void Search_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter || string.IsNullOrWhiteSpace(SearchBox.Text)) return;
-        var query = SearchBox.Text.Trim();
-        var match = Flatten(_roots).FirstOrDefault(node => !node.IsDirectory &&
-            node.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
-        if (match is null)
-        {
-            OutputPanel.StatusMessage = $"No file matching '{query}'";
-            return;
-        }
-
-        _ = OpenDocumentAsync(match);
+        await _searchController.OpenFileMatchingAsync(SearchBox.Text);
         e.Handled = true;
     }
-
     private void AppendOutput(string line) => Dispatcher.UIThread.Post(() => OutputPanel.AppendOutput(line));
 
     private void UpdateDiagnostics()
@@ -934,17 +648,6 @@ public sealed partial class MainWindow : Window
         DiagnosticsText.Text = $"RAM {process.WorkingSet64 / 1024 / 1024:N0} MB";
     }
 
-    private void ActivateDocument(EditorDocument? document)
-    {
-        foreach (var item in _documents) item.IsActive = ReferenceEquals(item, document);
-        _activeDocument = document;
-        _editorWorkspaceController.SetActiveDocument(document);
-        SyncSolutionExplorerToActiveDocument();
-    }
-    private void SyncSolutionExplorerToActiveDocument()
-    {
-        if (_activeDocument is not null) SolutionExplorerPanel.SelectAndReveal(_activeDocument.FullPath);
-    }
     private void AddProjects(FileNode node)
     {
         if (Path.GetExtension(node.Name).Equals(".csproj", StringComparison.OrdinalIgnoreCase))

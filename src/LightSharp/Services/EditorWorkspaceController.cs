@@ -13,13 +13,13 @@ namespace LightSharp.Services;
 public sealed class EditorWorkspaceController : IDisposable
 {
     private readonly EditorWorkspaceView _view;
-    private readonly ObservableCollection<EditorDocument> _documents;
+    private readonly ObservableCollection<EditorDocument> _documents = [];
     private readonly ObservableCollection<FileNode> _projects;
     private readonly OutputPanelView _output;
+    private readonly Window _owner;
+    private readonly Action<string> _revealFile;
     private readonly IMessageBus _messageBus;
     private readonly CSharpCompletionService _completionService = new();
-    private readonly Action<EditorDocument> _activateDocument;
-    private readonly Func<EditorDocument, Task> _closeDocument;
     private readonly List<IDisposable> _subscriptions = [];
     private readonly DispatcherTimer _syntaxDiagnosticsTimer;
     private readonly DispatcherTimer _quickInfoTimer;
@@ -35,20 +35,18 @@ public sealed class EditorWorkspaceController : IDisposable
 
     public EditorWorkspaceController(
         EditorWorkspaceView view,
-        ObservableCollection<EditorDocument> documents,
         ObservableCollection<FileNode> projects,
         OutputPanelView output,
         IMessageBus messageBus,
-        Action<EditorDocument> activateDocument,
-        Func<EditorDocument, Task> closeDocument)
+        Window owner,
+        Action<string> revealFile)
     {
         _view = view;
-        _documents = documents;
         _projects = projects;
         _output = output;
         _messageBus = messageBus;
-        _activateDocument = activateDocument;
-        _closeDocument = closeDocument;
+        _owner = owner;
+        _revealFile = revealFile;
 
         _view.SetDocuments(_documents);
         _subscriptions.Add(messageBus.Observe<EditorTextChanged>().Subscribe(_ => Editor_TextChanged()));
@@ -58,8 +56,8 @@ public sealed class EditorWorkspaceController : IDisposable
         _subscriptions.Add(messageBus.Observe<EditorPointerMoved>().Subscribe(message => EditorPointerMoved(message.Offset)));
         _subscriptions.Add(messageBus.Observe<EditorPointerExited>().Subscribe(_ => ClearQuickInfo()));
         _subscriptions.Add(messageBus.Observe<EditorCaretMoved>().Subscribe(_ => UpdateCursorStatus()));
-        _subscriptions.Add(messageBus.Observe<ActivateDocumentRequested>().Subscribe(message => _activateDocument(message.Document)));
-        _subscriptions.Add(messageBus.Observe<CloseDocumentRequested>().Subscribe(message => { _ = _closeDocument(message.Document); }));
+        _subscriptions.Add(messageBus.Observe<ActivateDocumentRequested>().Subscribe(message => SetActiveDocument(message.Document)));
+        _subscriptions.Add(messageBus.Observe<CloseDocumentRequested>().Subscribe(message => { _ = CloseDocumentAsync(message.Document); }));
 
         _syntaxDiagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _syntaxDiagnosticsTimer.Tick += (_, _) =>
@@ -72,8 +70,92 @@ public sealed class EditorWorkspaceController : IDisposable
     }
 
     public EditorDocument? ActiveDocument => _activeDocument;
+    public ObservableCollection<EditorDocument> Documents => _documents;
 
-    public void SetDocuments(IEnumerable<EditorDocument> documents) => _view.SetDocuments(documents);
+    public async Task OpenDocumentAsync(FileNode node)
+    {
+        if (node.IsDirectory) return;
+        try
+        {
+            var document = _documents.FirstOrDefault(item =>
+                string.Equals(item.FullPath, node.FullPath, StringComparison.OrdinalIgnoreCase));
+            if (document is null)
+            {
+                document = new EditorDocument(node.FullPath, await File.ReadAllTextAsync(node.FullPath));
+                _documents.Add(document);
+            }
+            SetActiveDocument(document);
+        }
+        catch (Exception ex)
+        {
+            _output.AppendOutput(ex.Message);
+        }
+    }
+
+    public async Task SaveActiveDocumentAsync()
+    {
+        if (_activeDocument is null) return;
+        try
+        {
+            await File.WriteAllTextAsync(_activeDocument.FullPath, _activeDocument.Text);
+            _activeDocument.MarkSaved();
+            _output.StatusMessage = $"Saved {_activeDocument.Name}";
+        }
+        catch (Exception ex) { _output.AppendOutput(ex.Message); }
+    }
+
+    public async Task SaveAllAsync()
+    {
+        foreach (var document in _documents.Where(document => document.IsDirty).ToArray())
+        {
+            try
+            {
+                await File.WriteAllTextAsync(document.FullPath, document.Text);
+                document.MarkSaved();
+            }
+            catch (Exception ex)
+            {
+                _output.AppendOutput($"Unable to save {document.Name}: {ex.Message}");
+                _output.StatusMessage = $"Could not save {document.Name}";
+                return;
+            }
+        }
+        _output.StatusMessage = "All files saved";
+    }
+
+    public async Task CloseDocumentAsync(EditorDocument document)
+    {
+        if (document.IsDirty)
+        {
+            var choice = await new SaveChangesDialog(document.Name).ShowDialog<SaveChangesChoice>(_owner);
+            if (choice == SaveChangesChoice.Cancel) return;
+            if (choice == SaveChangesChoice.Save)
+            {
+                try
+                {
+                    await File.WriteAllTextAsync(document.FullPath, document.Text);
+                    document.MarkSaved();
+                }
+                catch (Exception ex)
+                {
+                    _output.AppendOutput($"Unable to save {document.Name}: {ex.Message}");
+                    _output.StatusMessage = $"Could not save {document.Name}";
+                    return;
+                }
+            }
+        }
+
+        var wasActive = ReferenceEquals(_activeDocument, document);
+        _documents.Remove(document);
+        if (wasActive) SetActiveDocument(_documents.LastOrDefault());
+    }
+
+    public void ActivateAdjacentDocument(int direction)
+    {
+        if (_documents.Count == 0) return;
+        var index = _activeDocument is null ? -1 : _documents.IndexOf(_activeDocument);
+        SetActiveDocument(_documents[(index + direction + _documents.Count) % _documents.Count]);
+    }
 
     private void Editor_TextChanged()
     {
@@ -88,8 +170,10 @@ public sealed class EditorWorkspaceController : IDisposable
         ClearQuickInfo();
         _completionWindow?.Hide();
         _completionWindow = null;
+        foreach (var item in _documents) item.IsActive = ReferenceEquals(item, document);
         _activeDocument = document;
         _view.SetActiveDocument(document);
+        if (document is not null) _revealFile(document.FullPath);
         UpdateSyntaxDiagnostics();
         UpdateCursorStatus();
         if (document is not null) _view.FocusEditor();
