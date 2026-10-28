@@ -7,12 +7,12 @@ namespace LightSharp.Models;
 
 public sealed class EditorCompletionItem : ICompletionData
 {
-    private readonly Action<TextArea, ISegment> _complete;
+    private readonly Action<TextArea, ISegment, EventArgs> _complete;
 
     public EditorCompletionItem(
         string text,
         string? description,
-        Action<TextArea, ISegment> complete,
+        Action<TextArea, ISegment, EventArgs> complete,
         double priority = 0)
     {
         Text = text;
@@ -28,5 +28,5 @@ public sealed class EditorCompletionItem : ICompletionData
     public double Priority { get; }
 
     public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs) =>
-        _complete(textArea, completionSegment);
+        _complete(textArea, completionSegment, insertionRequestEventArgs);
 }

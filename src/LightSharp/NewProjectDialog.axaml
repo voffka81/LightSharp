@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="LightSharp.NewProjectDialog"
+        Title="Create a new project" Width="820" Height="610" MinWidth="760" MinHeight="560"
+        WindowStartupLocation="CenterOwner" CanResize="True" Background="#25262A" Foreground="#E0E1E4">
+  <Window.Styles>
+    <Style Selector="TextBlock.label"><Setter Property="FontSize" Value="11"/><Setter Property="Foreground" Value="#AEB0B7"/></Style>
+    <Style Selector="Button.dialog-button"><Setter Property="MinWidth" Value="92"/><Setter Property="Padding" Value="14,7"/><Setter Property="CornerRadius" Value="3"/></Style>
+    <Style Selector="Button.create-button"><Setter Property="Background" Value="#6A9B35"/><Setter Property="BorderBrush" Value="#7EAD49"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="ListBoxItem"><Setter Property="Padding" Value="10,8"/><Setter Property="CornerRadius" Value="3"/></Style>
+    <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#394253"/><Setter Property="Foreground" Value="White"/></Style>
+  </Window.Styles>
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <Border Padding="22,17" Background="#292A2E" BorderBrush="#3A3B40" BorderThickness="0,0,0,1">
+      <StackPanel Spacing="4"><TextBlock FontSize="18" FontWeight="SemiBold" Text="Create a new project"/><TextBlock FontSize="12" Foreground="#9698A0" Text="Choose a template to get started."/></StackPanel>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="250,*" Margin="18,16,18,12">
+      <Border Grid.Column="0" Background="#202125" BorderBrush="#3A3B40" BorderThickness="1" CornerRadius="4">
+        <Grid RowDefinitions="Auto,*" Margin="8">
+          <TextBox x:Name="TemplateSearchBox" Height="32" Margin="2,2,2,9" VerticalContentAlignment="Center" PlaceholderText="Search templates" TextChanged="TemplateSearch_TextChanged"/>
+          <ListBox x:Name="TemplateList" Grid.Row="1" SelectionChanged="TemplateList_SelectionChanged" Background="Transparent" BorderThickness="0">
+            <ListBoxItem Tag="console" Content="Console App"/>
+            <ListBoxItem Tag="classlib" Content="Class Library"/>
+            <ListBoxItem Tag="webapi" Content="ASP.NET Core Web API"/>
+            <ListBoxItem Tag="webapp" Content="ASP.NET Core Web App"/>
+            <ListBoxItem Tag="xunit" Content="xUnit Test Project"/>
+          </ListBox>
+        </Grid>
+      </Border>
+      <Border Grid.Column="1" Margin="14,0,0,0" Background="#202125" BorderBrush="#3A3B40" BorderThickness="1" CornerRadius="4" Padding="22">
+        <StackPanel Spacing="12" VerticalAlignment="Top">
+          <Border Width="52" Height="52" HorizontalAlignment="Left" Background="#343943" CornerRadius="6"><TextBlock x:Name="TemplateIcon" Text="C#" Foreground="#AFCB8D" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+          <TextBlock x:Name="TemplateTitle" FontSize="18" FontWeight="SemiBold" Text="Console App"/>
+          <TextBlock x:Name="TemplateDescription" Foreground="#AEB0B7" FontSize="12" TextWrapping="Wrap" Text="A simple command-line application."/>
+          <Border Height="1" Background="#3A3B40" Margin="0,8"/>
+          <TextBlock Classes="label" Text="LANGUAGE"/>
+          <TextBlock FontSize="12" Text="C#"/>
+          <TextBlock Classes="label" Margin="0,8,0,0" Text="PLATFORM"/>
+          <TextBlock FontSize="12" Text=".NET"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+    <Border Grid.Row="2" Margin="18,0,18,14" Padding="14" Background="#202125" BorderBrush="#3A3B40" BorderThickness="1" CornerRadius="4">
+      <Grid ColumnDefinitions="130,*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="10" ColumnSpacing="10">
+        <TextBlock Classes="label" Text="PROJECT NAME" VerticalAlignment="Center"/>
+        <TextBox x:Name="ProjectNameBox" Grid.Column="1" Height="30" VerticalContentAlignment="Center" Text="NewProject"/>
+        <TextBlock Classes="label" Grid.Row="1" Text="LOCATION" VerticalAlignment="Center"/>
+        <TextBox x:Name="LocationBox" Grid.Row="1" Grid.Column="1" Height="30" VerticalContentAlignment="Center"/>
+        <Button Grid.Row="1" Grid.Column="2" Content="Browse..." Click="BrowseLocation_Click"/>
+        <CheckBox x:Name="AddToSolutionCheck" Grid.Row="2" Grid.Column="1" Content="Add to current solution" IsVisible="False"/>
+      </Grid>
+    </Border>
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" Margin="18,0,18,16">
+      <TextBlock x:Name="ValidationText" Foreground="#E08A8A" FontSize="11" VerticalAlignment="Center" IsVisible="False"/>
+      <Button Grid.Column="1" Classes="dialog-button" Margin="0,0,8,0" Content="Cancel" Click="Cancel_Click"/>
+      <Button Grid.Column="2" Classes="dialog-button create-button" Content="Create" Click="Create_Click" IsDefault="True"/>
+    </Grid>
+  </Grid>
+</Window>

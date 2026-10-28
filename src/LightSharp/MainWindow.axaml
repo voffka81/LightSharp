@@ -2,217 +2,122 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
         xmlns:models="using:LightSharp.Models"
+        xmlns:local="using:LightSharp"
         x:Class="LightSharp.MainWindow"
-        Title="LightSharp" Width="1280" Height="820" MinWidth="900" MinHeight="600"
-        Background="#1B1C20" Foreground="#E4E5E9">
+        Title="LightSharp" Width="1440" Height="900" MinWidth="1050" MinHeight="680"
+        Background="#1E1F22" Foreground="#DADCE0" KeyDown="Window_KeyDown">
   <Window.Styles>
-    <Style Selector="MenuItem">
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="Padding" Value="8,4" />
-    </Style>
-    <Style Selector="Button.toolbar-button">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="Foreground" Value="#D8DAE0" />
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="Padding" Value="10,5" />
-      <Setter Property="CornerRadius" Value="3" />
-    </Style>
-    <Style Selector="Button.toolbar-button:pointerover">
-      <Setter Property="Background" Value="#303239" />
-    </Style>
-    <Style Selector="Button.start-button">
-      <Setter Property="Background" Value="#4C68B5" />
-      <Setter Property="BorderBrush" Value="#617CC6" />
-      <Setter Property="Foreground" Value="White" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.start-button:pointerover">
-      <Setter Property="Background" Value="#5A77C8" />
-    </Style>
-    <Style Selector="Button.document-tab">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="Foreground" Value="#AEB1BA" />
-      <Setter Property="FontSize" Value="12" />
-      <Setter Property="Padding" Value="12,7" />
-      <Setter Property="CornerRadius" Value="0" />
-    </Style>
-    <Style Selector="Button.document-tab.active">
-      <Setter Property="Background" Value="#292B31" />
-      <Setter Property="Foreground" Value="#F1F2F5" />
-      <Setter Property="BorderBrush" Value="#7594E0" />
-      <Setter Property="BorderThickness" Value="0,1,0,0" />
-    </Style>
-    <Style Selector="Button.document-tab:pointerover">
-      <Setter Property="Background" Value="#303239" />
-      <Setter Property="Foreground" Value="#F1F2F5" />
-    </Style>
-    <Style Selector="Button.tab-close">
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-      <Setter Property="Foreground" Value="#AEB1BA" />
-      <Setter Property="FontSize" Value="13" />
-      <Setter Property="Padding" Value="5,3" />
-      <Setter Property="CornerRadius" Value="2" />
-      <Setter Property="MinWidth" Value="24" />
-    </Style>
-    <Style Selector="Button.tab-close:pointerover">
-      <Setter Property="Background" Value="#41434B" />
-      <Setter Property="Foreground" Value="White" />
-    </Style>
-    <Style Selector="TextBlock.section-label">
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#B7BAC3" />
-    </Style>
-    <Style Selector="TreeViewItem">
-      <Setter Property="Padding" Value="3,1" />
-      <Setter Property="FontSize" Value="12" />
-    </Style>
-    <Style Selector="TreeViewItem:selected">
-      <Setter Property="Background" Value="#303543" />
-      <Setter Property="Foreground" Value="#F1F2F5" />
-    </Style>
+    <Style Selector="TextBlock.overline"><Setter Property="FontSize" Value="10"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="#92949B"/></Style>
+    <Style Selector="Button.chrome"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Foreground" Value="#C8C9CE"/><Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="10,5"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style Selector="Button.chrome:pointerover"><Setter Property="Background" Value="#34363B"/></Style>
+    <Style Selector="Button.launch"><Setter Property="Background" Value="#6A9B35"/><Setter Property="BorderBrush" Value="#7EAD49"/><Setter Property="Foreground" Value="White"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="12,6"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style Selector="Button.launch:pointerover"><Setter Property="Background" Value="#79AA42"/></Style>
+    <Style Selector="Button.action"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Foreground" Value="#D2D3D7"/><Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="10,5"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style Selector="Button.action:pointerover"><Setter Property="Background" Value="#3A3B40"/></Style>
+    <Style Selector="Button.toolbar-icon"><Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="CornerRadius" Value="3"/></Style>
+    <Style Selector="Button.toolbar-icon:pointerover"><Setter Property="Background" Value="#414247"/></Style>
+    <Style Selector="Button.output-tab"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Foreground" Value="#92949B"/><Setter Property="FontSize" Value="10"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="0,4"/><Setter Property="CornerRadius" Value="0"/></Style>
+    <Style Selector="Button.output-tab.selected"><Setter Property="Foreground" Value="#AFCB8D"/><Setter Property="BorderBrush" Value="#8BBF50"/><Setter Property="BorderThickness" Value="0,0,0,2"/></Style>
+    <Style Selector="Button.doc-tab"><Setter Property="Background" Value="#25262A"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Foreground" Value="#AEB0B7"/><Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="12,8"/><Setter Property="CornerRadius" Value="0"/></Style>
+    <Style Selector="Button.doc-tab.active"><Setter Property="Background" Value="#1E1F22"/><Setter Property="Foreground" Value="#F0F0F0"/><Setter Property="BorderBrush" Value="#7DAE49"/><Setter Property="BorderThickness" Value="0,2,0,0"/></Style>
+    <Style Selector="Button.doc-tab:pointerover"><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.tab-close"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Foreground" Value="#9799A0"/><Setter Property="Padding" Value="3,2"/><Setter Property="MinWidth" Value="22"/><Setter Property="CornerRadius" Value="3"/></Style>
+    <Style Selector="Button.tab-close:pointerover"><Setter Property="Background" Value="#41434A"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="TreeViewItem"><Setter Property="Padding" Value="4,2"/><Setter Property="FontSize" Value="12"/><Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded}"/></Style>
+    <Style Selector="TreeViewItem:selected"><Setter Property="Background" Value="#343943"/><Setter Property="Foreground" Value="#F1F2F3"/></Style>
   </Window.Styles>
-
-  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-    <Border Grid.Row="0" Background="#202126" BorderBrush="#35373E" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,*">
-        <TextBlock Margin="12,0,18,0" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" Text="LightSharp" />
-        <Menu Grid.Column="1" Background="Transparent" Padding="0">
-          <MenuItem Header="File">
-            <MenuItem Header="Open Folder..." Click="OpenFolder_Click" />
-            <Separator />
-            <MenuItem Header="Save" Click="Save_Click" />
-          </MenuItem>
-          <MenuItem Header="Edit">
-            <MenuItem Header="Select All" Click="SelectAll_Click" />
-          </MenuItem>
-          <MenuItem Header="View">
-            <MenuItem Header="Focus Output" Click="FocusOutput_Click" />
-          </MenuItem>
-          <MenuItem Header="Git" IsEnabled="False" />
-          <MenuItem Header="Build" Click="Build_Click" />
-          <MenuItem Header="Debug">
-            <MenuItem Header="Start Without Debugging" Click="Start_Click" />
-            <MenuItem Header="Stop" Click="Stop_Click" />
-          </MenuItem>
-          <MenuItem Header="Test" Click="Test_Click" />
+  <Grid x:Name="ShellGrid" RowDefinitions="Auto,Auto,*,Auto,Auto">
+    <Border Grid.Row="0" Background="#28292D" BorderBrush="#3A3B40" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto" Height="38">        
+        <Menu Grid.Column="1" Background="Transparent" Padding="0" VerticalAlignment="Center">
+          <MenuItem Header="File"><MenuItem Header="New Project...  Ctrl+Shift+N" Click="NewProject_Click"/><Separator/><MenuItem Header="Open File...  Ctrl+O" Click="OpenFile_Click"/><MenuItem Header="Open Solution...  Ctrl+Shift+O" Click="OpenSolution_Click"/><MenuItem Header="Open Folder..." Click="OpenFolder_Click"/><Separator/><MenuItem Header="Save  Ctrl+S" Click="Save_Click"/><MenuItem Header="Save All  Ctrl+Shift+S" Click="SaveAll_Click"/></MenuItem>
+          <MenuItem Header="Edit"><MenuItem Header="Format Document  Ctrl+K, Ctrl+D" Click="FormatDocument_Click"/><MenuItem Header="Format Selection  Ctrl+K, Ctrl+F" Click="FormatSelection_Click"/><Separator/><MenuItem Header="Comment Selection  Ctrl+K, Ctrl+C" Click="Comment_Click"/><MenuItem Header="Uncomment Selection  Ctrl+K, Ctrl+U" Click="Uncomment_Click"/><Separator/><MenuItem Header="Select All  Ctrl+A" Click="SelectAll_Click"/></MenuItem>
+          <MenuItem Header="View"><MenuItem Header="Focus Output" Click="FocusOutput_Click"/></MenuItem>
+          <MenuItem Header="Git" IsEnabled="False"/><MenuItem Header="Build  Ctrl+Shift+B" Click="Build_Click"/><MenuItem Header="Debug"><MenuItem Header="Start  F5" Click="Start_Click"/><MenuItem Header="Start Without Debugging  Ctrl+F5" Click="Start_Click"/><MenuItem Header="Stop  Shift+F5" Click="Stop_Click"/></MenuItem><MenuItem Header="Test"><MenuItem Header="Run Tests  Ctrl+R, Ctrl+T" Click="Test_Click"/></MenuItem>
         </Menu>
+        <TextBlock Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#8F9198" FontSize="11" Text="LightSharp  ·  Lightweight C# IDE" />
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center" Spacing="4">
+          <TextBlock VerticalAlignment="Center" Foreground="#7C7E85" FontSize="10" Text="IDE PREVIEW"/>
+          <Ellipse Width="7" Height="7" Fill="#8BBF50" VerticalAlignment="Center" Margin="4,0,0,0"/>
+        </StackPanel>
       </Grid>
     </Border>
-
-    <Border Grid.Row="1" Padding="8,5" Background="#24252A" BorderBrush="#35373E" BorderThickness="0,0,0,1">
-      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
-        <Button Classes="toolbar-button start-button" Click="Start_Click">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <TextBlock Text="▶" />
-            <TextBlock Text="Start" />
-          </StackPanel>
-        </Button>
-        <ComboBox x:Name="StartupProjectSelector" Grid.Column="1" Width="190" Margin="6,0" FontSize="12"
-                  VerticalContentAlignment="Center" ToolTip.Tip="Startup project">
-          <ComboBox.ItemTemplate>
-            <DataTemplate x:DataType="models:FileNode">
-              <TextBlock Text="{Binding Name}" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
+    <Border Grid.Row="1" Padding="8,4" Background="#292A2E" BorderBrush="#3A3B40" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto">
+        <Button Classes="toolbar-icon" Click="Save_Click" ToolTip.Tip="Save (Ctrl+S)"><Path Width="16" Height="16" Data="M2,1 L12,1 L15,4 L15,15 L1,15 L1,1 Z M4,1 L4,6 L11,6 L11,2 M4,9 L12,9 L12,14 L4,14 Z" Fill="Transparent" Stroke="#C8C9CE" StrokeThickness="1.2"/></Button>
+        <Border Grid.Column="1" Width="1" Height="22" Background="#494A4F" Margin="7,0" VerticalAlignment="Center"/>
+        <ComboBox x:Name="ConfigurationSelector" Grid.Column="2" Width="88" Margin="2,0,5,0" FontSize="12" SelectedIndex="0" ToolTip.Tip="Solution configuration"><ComboBoxItem Content="Debug"/><ComboBoxItem Content="Release"/></ComboBox>
+        <ComboBox Grid.Column="3" Width="100" Margin="2,0,5,0" FontSize="12" SelectedIndex="0" ToolTip.Tip="Solution platform"><ComboBoxItem Content="Any CPU"/></ComboBox>
+        <Border Grid.Column="4" Width="1" Height="22" Background="#494A4F" Margin="5,0" VerticalAlignment="Center"/>
+        <Button Grid.Column="5" Classes="launch" Width="30" Height="30" Padding="0" Click="Start_Click" ToolTip.Tip="Start"><Path Width="12" Height="14" Data="M2,1 L12,7 L2,13 Z" Fill="#FFFFFF"/></Button>
+        <ComboBox x:Name="StartupProjectSelector" Grid.Column="6" Width="175" Margin="6,0" FontSize="12" VerticalContentAlignment="Center" ToolTip.Tip="Startup project">
+          <ComboBox.ItemTemplate><DataTemplate x:DataType="models:FileNode"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate>
         </ComboBox>
-        <Button Classes="toolbar-button" Grid.Column="2" Content="Build" Click="Build_Click" />
-        <Button x:Name="StopButton" Classes="toolbar-button" Grid.Column="3" Content="Stop" Click="Stop_Click" IsEnabled="False" />
-        <Button Classes="toolbar-button" Grid.Column="4" Content="Test" Click="Test_Click" />
-        <TextBlock x:Name="WorkspaceText" Grid.Column="5" Margin="16,0" VerticalAlignment="Center"
-                   Foreground="#9699A3" FontSize="12" Text="No workspace" />
-        <TextBox x:Name="SearchBox" Grid.Column="6" Width="190" Height="28" VerticalContentAlignment="Center"
-           FontSize="12" PlaceholderText="Search files" KeyDown="Search_KeyDown" />
+        <Border Grid.Column="7" Width="1" Height="22" Background="#494A4F" Margin="5,0" VerticalAlignment="Center"/>
+        <Button Grid.Column="8" Classes="toolbar-icon" Click="Build_Click" ToolTip.Tip="Build solution"><Path Width="17" Height="17" Data="M2,4 L6,1 L10,5 L8,7 L14,13 L12,15 L6,9 L4,11 L2,9 L4,7 Z" Fill="#C9CBD1"/></Button>
+        <Button Grid.Column="9" Classes="toolbar-icon" Click="Test_Click" ToolTip.Tip="Run tests"><Path Width="17" Height="17" Data="M5,1 L11,1 M7,1 L7,6 L3,13 Q2,15 5,15 L13,15 Q16,15 14,13 L9,6 L9,1 M5,11 L12,11" Stroke="#C9CBD1" StrokeThickness="1.5"/></Button>
+        <Button x:Name="StopButton" Grid.Column="10" Classes="toolbar-icon" Click="Stop_Click" IsEnabled="False" ToolTip.Tip="Stop"><Rectangle Width="10" Height="10" Fill="#D48181"/></Button>
+        <Border Grid.Column="11" Width="1" Height="22" Background="#494A4F" Margin="7,0" VerticalAlignment="Center"/>
+        <TextBlock x:Name="WorkspaceText" Grid.Column="12" Margin="8,0" VerticalAlignment="Center" Foreground="#9A9CA3" FontSize="12" Text="No workspace"/>
+        <TextBlock Grid.Column="13" VerticalAlignment="Center" Margin="8,0" Foreground="#777980" FontSize="11" Text="Search"/>
+        <TextBox x:Name="SearchBox" Grid.Column="14" Width="205" Height="29" VerticalContentAlignment="Center" FontSize="12" PlaceholderText="Search files  (Enter)" KeyDown="Search_KeyDown"/>
       </Grid>
     </Border>
-
-    <Grid Grid.Row="2" ColumnDefinitions="230,1,*">
-      <Border Grid.Column="0" Background="#202126" BorderBrush="#35373E" BorderThickness="0,0,1,0">
-        <Grid RowDefinitions="Auto,*">
-          <Border Padding="11,9" BorderBrush="#35373E" BorderThickness="0,0,0,1">
-            <TextBlock Classes="section-label" Text="SOLUTION EXPLORER" />
-          </Border>
-          <TreeView x:Name="FileTree" Grid.Row="1" Padding="5,4" DoubleTapped="FileTree_DoubleTapped">
-            <TreeView.ItemTemplate>
-              <TreeDataTemplate x:DataType="models:FileNode" ItemsSource="{Binding Children}">
-                <StackPanel Orientation="Horizontal" Spacing="7">
-                  <Grid Width="31" Height="16">
-                    <Path Width="16" Height="14" HorizontalAlignment="Left" VerticalAlignment="Center"
-                          Data="M1,3 L6,3 L8,5 L15,5 L15,13 L1,13 Z" Fill="#30394B"
-                          Stroke="#8EA7E4" StrokeThickness="1.2" IsVisible="{Binding IsDirectory}" />
-                    <TextBlock Width="31" FontSize="9" FontWeight="SemiBold" Foreground="#8EA7E4"
-                               VerticalAlignment="Center" IsVisible="{Binding IsFile}" Text="{Binding Glyph}" />
-                  </Grid>
-                  <TextBlock FontSize="12" Text="{Binding Name}" />
-                </StackPanel>
-              </TreeDataTemplate>
-            </TreeView.ItemTemplate>
+    <Grid x:Name="WorkspaceArea" Grid.Row="2" ColumnDefinitions="48,248,1,*,1,280">
+      <Border Grid.Column="0" Background="#25262A" BorderBrush="#3A3B40" BorderThickness="0,0,1,0">
+        <StackPanel Spacing="5" Margin="0,13,0,0">
+          <Border Height="38" BorderBrush="#87B84E" BorderThickness="2,0,0,0" Background="#303137"><TextBlock Text="▤" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#DADCDF"/></Border>
+          <TextBlock Text="⌕" FontSize="20" HorizontalAlignment="Center" Foreground="#888A91" Margin="0,5"/>
+          <TextBlock Text="⑂" FontSize="20" HorizontalAlignment="Center" Foreground="#888A91"/>
+          <TextBlock Text="◇" FontSize="18" HorizontalAlignment="Center" Foreground="#888A91"/>
+        </StackPanel>
+      </Border>
+      <Border x:Name="SolutionExplorerPanel" Grid.Column="1" Background="#25262A" BorderBrush="#3A3B40" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,Auto,*">
+          <Grid ColumnDefinitions="*,Auto" Height="42" Margin="14,0,10,0"><TextBlock Classes="overline" Text="SOLUTION EXPLORER" VerticalAlignment="Center"/><Button Classes="chrome" Grid.Column="1" Content="···" Padding="7,2"/></Grid>
+          <Border Grid.Row="1" Margin="10,0,10,7" Background="#1E1F22" BorderBrush="#3C3D42" BorderThickness="1" CornerRadius="4" Padding="8,5"><TextBlock Foreground="#81838A" FontSize="11" Text="⌕  Filter solution"/></Border>
+          <TreeView x:Name="FileTree" Grid.Row="2" Padding="6,2" DoubleTapped="FileTree_DoubleTapped">
+            <TreeView.ItemTemplate><TreeDataTemplate x:DataType="models:FileNode" ItemsSource="{Binding Children}"><StackPanel Orientation="Horizontal" Spacing="8" RightTapped="FileTreeItem_RightTapped"><Grid Width="24" Height="18"><Path Width="15" Height="12" HorizontalAlignment="Left" VerticalAlignment="Center" Data="M1,3 L6,3 L8,5 L15,5 L15,13 L1,13 Z" Fill="#343B47" Stroke="#91A7CF" StrokeThickness="1" IsVisible="{Binding IsDirectory}"/><TextBlock Width="24" FontSize="8" FontWeight="SemiBold" Foreground="#92A8D0" VerticalAlignment="Center" IsVisible="{Binding IsFile}" Text="{Binding Glyph}"/></Grid><TextBlock FontSize="12" Text="{Binding Name}" VerticalAlignment="Center"/></StackPanel></TreeDataTemplate></TreeView.ItemTemplate>
           </TreeView>
         </Grid>
       </Border>
-
-      <Border Grid.Column="1" Background="#35373E" />
-
-      <Grid Grid.Column="2" RowDefinitions="Auto,*" Background="#191A1E">
-        <Border Grid.Row="0" Background="#202126" BorderBrush="#35373E" BorderThickness="0,0,0,1">
-          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-            <ItemsControl x:Name="DocumentTabs">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Orientation="Horizontal" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="models:EditorDocument">
-                  <Grid ColumnDefinitions="Auto,Auto" Background="#222329">
-                    <Button Classes="document-tab" Classes.active="{Binding IsActive}" Click="DocumentTab_Click">
-                      <TextBlock Text="{Binding TabTitle}" />
-                    </Button>
-                    <Button Classes="tab-close" Grid.Column="1" Content="×" Click="CloseDocument_Click" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
+      <Border Grid.Column="2" Background="#3A3B40"/>
+      <Grid x:Name="EditorSurface" Grid.Column="3" RowDefinitions="Auto,*" Background="#1E1F22">
+        <Border Grid.Row="0" Background="#25262A" BorderBrush="#3A3B40" BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="*,Auto"><ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><ItemsControl x:Name="DocumentTabs"><ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate x:DataType="models:EditorDocument"><Grid ColumnDefinitions="Auto,Auto" Background="#25262A"><Button Classes="doc-tab" Classes.active="{Binding IsActive}" Click="DocumentTab_Click"><StackPanel Orientation="Horizontal" Spacing="8"><Ellipse Width="7" Height="7" Fill="#9EACD2" IsVisible="{Binding IsDirty}"/><TextBlock Text="{Binding TabTitle}"/></StackPanel></Button><Button Classes="tab-close" Grid.Column="1" Content="×" Click="CloseDocument_Click"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer><Button Grid.Column="1" Classes="chrome" Content="···" Margin="5,0"/></Grid>
         </Border>
-
         <Grid Grid.Row="1">
-          <ae:TextEditor x:Name="Editor" ShowLineNumbers="True" FontFamily="Menlo,Consolas,monospace"
-                         FontSize="13" Background="#191A1E" Foreground="#D9DAE0" TextChanged="Editor_TextChanged"
-                         KeyDown="Editor_KeyDown" />
-          <TextBlock x:Name="EmptyEditorText" HorizontalAlignment="Center" VerticalAlignment="Center"
-                     Foreground="#656873" FontSize="13" IsHitTestVisible="False" Text="Open a source file to start editing" />
+          <ae:TextEditor x:Name="Editor" ShowLineNumbers="True" FontFamily="Cascadia Code,Consolas,monospace" FontSize="13" Background="#1E1F22" Foreground="#DADCE0" TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown"/>
+          <StackPanel x:Name="EmptyEditorText" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" IsHitTestVisible="False"><TextBlock Text="◈" FontSize="34" Foreground="#52545B" HorizontalAlignment="Center"/><TextBlock Foreground="#888A91" FontSize="14" Text="Open a source file to start editing"/><TextBlock Foreground="#65676E" FontSize="11" Text="Choose a file from Solution Explorer" HorizontalAlignment="Center"/></StackPanel>
         </Grid>
       </Grid>
+      <Border Grid.Column="4" Background="#3A3B40"/>
+      <Border x:Name="PropertiesPanel" Grid.Column="5" Background="#25262A">
+        <Grid RowDefinitions="Auto,*"><Border Padding="14,0" Height="42" BorderBrush="#3A3B40" BorderThickness="0,0,0,1"><TextBlock Classes="overline" Text="SOLUTION" VerticalAlignment="Center"/></Border><StackPanel Grid.Row="1" Margin="14" Spacing="10"><TextBlock Foreground="#9698A0" FontSize="11" Text="STARTUP PROJECT"/><TextBlock Foreground="#DADCE0" FontSize="13" Text="Select a project"/><Border Height="1" Background="#3A3B40" Margin="0,5"/><TextBlock Foreground="#9698A0" FontSize="11" Text="WORKSPACE"/><TextBlock x:Name="WorkspaceDetailText" Foreground="#DADCE0" FontSize="12" Text="Open a folder to get started" TextWrapping="Wrap"/><Border Height="1" Background="#3A3B40" Margin="0,5"/><TextBlock Foreground="#9698A0" FontSize="11" Text="QUICK ACTIONS"/><Button Classes="chrome" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="＋  Open folder..." Click="OpenFolder_Click"/><Button Classes="chrome" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="⚒  Build solution" Click="Build_Click"/></StackPanel></Grid>
+      </Border>
     </Grid>
-
-    <Border x:Name="OutputPanel" Grid.Row="3" Height="190" Background="#202126"
-            BorderBrush="#35373E" BorderThickness="0,1,0,0">
+    <Border x:Name="OutputPanel" Grid.Row="3" Height="190" Background="#25262A" BorderBrush="#3A3B40" BorderThickness="0,1,0,0">
       <Grid RowDefinitions="Auto,*">
-        <StackPanel Orientation="Horizontal" Spacing="20" Margin="11,0" Height="32" VerticalAlignment="Center">
-          <TextBlock Classes="section-label" VerticalAlignment="Center" Text="PROBLEMS" />
-          <TextBlock Classes="section-label" VerticalAlignment="Center" Foreground="#8EA7E4" Text="OUTPUT" />
-          <TextBlock Classes="section-label" VerticalAlignment="Center" Text="TESTS" />
-          <TextBlock x:Name="StatusText" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#9699A3"
-                     FontSize="11" Text="Ready" />
-        </StackPanel>
-        <TextBox x:Name="Output" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-                 FontFamily="Menlo,Consolas,monospace" FontSize="11" Padding="10,6"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" Height="36" Margin="12,0">
+          <Button x:Name="ProblemsTabButton" Classes="output-tab selected" Content="PROBLEMS" Click="ShowProblems_Click"/>
+          <Button x:Name="OutputTabButton" Grid.Column="1" Classes="output-tab" Margin="16,0,0,0" Content="OUTPUT" Click="ShowOutput_Click"/>
+          <Button x:Name="TestsTabButton" Grid.Column="2" Classes="output-tab" Margin="16,0,0,0" Content="TESTS" Click="ShowTests_Click"/>
+          <TextBlock x:Name="StatusText" Grid.Column="3" Margin="18,0" VerticalAlignment="Center" Foreground="#92949B" FontSize="11" Text="Ready"/>
+          <Button Grid.Column="4" Classes="chrome" Content="⌄" Padding="8,2"/>
+        </Grid>
+        <Grid Grid.Row="1">
+          <TextBox x:Name="Output" IsVisible="False" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Padding="12,7" Background="#202125" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+          <ListBox x:Name="ProblemsList" Background="#202125" IsVisible="True" DoubleTapped="Problem_DoubleTapped">
+            <ListBox.ItemTemplate><DataTemplate x:DataType="local:EditorProblem"><TextBlock Text="{Binding DisplayText}" FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Foreground="#E08A8A" Margin="7,2"/></DataTemplate></ListBox.ItemTemplate>
+          </ListBox>
+          <StackPanel x:Name="TestsContent" IsVisible="False" Background="#202125" Orientation="Horizontal" VerticalAlignment="Center" Margin="12" Spacing="12">
+            <TextBlock x:Name="TestsSummaryText" Text="Run the solution tests to see results here." Foreground="#C8C9CE" VerticalAlignment="Center"/>
+            <Button Classes="chrome" Content="Run Tests" Click="Test_Click"/>
+          </StackPanel>
+        </Grid>
       </Grid>
     </Border>
-
-    <Border Grid.Row="4" Padding="10,4" Background="#25262B" BorderBrush="#35373E" BorderThickness="0,1,0,0">
-      <StackPanel Orientation="Horizontal" Spacing="18">
-        <TextBlock x:Name="GitStatusText" Foreground="#A5A8B1" FontSize="11" Text="Git: --" />
-        <TextBlock Foreground="#A5A8B1" FontSize="11" Text=".NET 10" />
-        <TextBlock Foreground="#A5A8B1" FontSize="11" Text="C#" />
-        <TextBlock x:Name="CursorStatusText" Foreground="#A5A8B1" FontSize="11" Text="Ln 1, Col 1" />
-        <TextBlock x:Name="DiagnosticsText" Foreground="#A5A8B1" FontSize="11" />
-      </StackPanel>
-    </Border>
+    <Border Grid.Row="4" Padding="10,4" Background="#333438" BorderBrush="#424349" BorderThickness="0,1,0,0"><Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto"><TextBlock Foreground="#B3B5BA" FontSize="11" Text="⎇  main"/><TextBlock x:Name="EditorStatusText" Grid.Column="1" Margin="16,0,0,0" Foreground="#A7A9AF" FontSize="11" Text="✓  Ready"/><TextBlock Grid.Column="2" Margin="16,0,0,0" Foreground="#A7A9AF" FontSize="11" Text=".NET 10"/><TextBlock Grid.Column="4" Margin="12,0" Foreground="#A7A9AF" FontSize="11" Text="C#"/><TextBlock x:Name="CursorStatusText" Grid.Column="5" Margin="12,0" Foreground="#A7A9AF" FontSize="11" Text="Ln 1, Col 1"/><TextBlock x:Name="DiagnosticsText" Grid.Column="6" Margin="12,0" Foreground="#A7A9AF" FontSize="11"/></Grid></Border>
   </Grid>
 </Window>
+
