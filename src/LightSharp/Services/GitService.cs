@@ -57,6 +57,41 @@ public sealed class GitService
         return result.StandardOutput.Trim();
     }
 
+    public Task<string> FetchAsync(string repositoryPath, CancellationToken cancellationToken = default) =>
+        RunRemoteOperationAsync(repositoryPath, cancellationToken, "fetch", "--all", "--prune");
+
+    public Task<string> PullAsync(string repositoryPath, CancellationToken cancellationToken = default) =>
+        RunRemoteOperationAsync(repositoryPath, cancellationToken, "pull", "--ff-only");
+
+    public async Task<string> PushAsync(string repositoryPath, CancellationToken cancellationToken = default)
+    {
+        var upstream = await RunAsync(repositoryPath, cancellationToken, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
+        if (upstream.ExitCode == 0)
+            return await RunRemoteOperationAsync(repositoryPath, cancellationToken, "push");
+
+        var remotes = await RunAsync(repositoryPath, cancellationToken, "remote");
+        var remote = remotes.StandardOutput.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (remote is null)
+            throw new InvalidOperationException("This repository has no remote configured.");
+
+        return await RunRemoteOperationAsync(repositoryPath, cancellationToken, "push", "--set-upstream", remote, "HEAD");
+    }
+
+    private static async Task<string> RunRemoteOperationAsync(string repositoryPath, CancellationToken cancellationToken, params string[] arguments)
+    {
+        var remotes = await RunAsync(repositoryPath, cancellationToken, "remote");
+        if (remotes.ExitCode != 0 || string.IsNullOrWhiteSpace(remotes.StandardOutput))
+            throw new InvalidOperationException("This repository has no remote configured.");
+
+        var result = await RunAsync(repositoryPath, cancellationToken, arguments);
+        if (result.ExitCode != 0)
+        {
+            var error = string.IsNullOrWhiteSpace(result.StandardError) ? result.StandardOutput : result.StandardError;
+            throw new InvalidOperationException(error.Trim());
+        }
+        return string.Join(Environment.NewLine, new[] { result.StandardOutput.Trim(), result.StandardError.Trim() }.Where(text => text.Length > 0));
+    }
+
     private static async Task<GitCommandResult> RunAsync(string workingDirectory, CancellationToken cancellationToken, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo("git")
