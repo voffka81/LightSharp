@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private readonly DotNetService _dotnet = new();
     private readonly GitService _git = new();
     private readonly CSharpCompletionService _completionService = new();
+    private readonly InputHandlerService _inputHandler = new();
     private readonly SyntaxErrorRenderer _syntaxErrorRenderer;
     private readonly SemanticColorizingTransformer _semanticColorizer;
     private readonly ObservableCollection<FileNode> _roots = [];
@@ -41,10 +42,13 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _semanticDiagnosticsCts;
     private CancellationTokenSource? _quickInfoCts;
     private CompletionWindow? _completionWindow;
+    private SearchReplaceWindow? _searchWindow;
+    private Dictionary<string, SearchUndoEntry>? _lastSearchUndo;
+
+    private sealed record SearchUndoEntry(string Before, string After);
     private readonly DispatcherTimer _diagnosticsTimer;
     private readonly DispatcherTimer _syntaxDiagnosticsTimer;
     private readonly DispatcherTimer _quickInfoTimer;
-    private string? _shortcutPrefix;
     private int _hoverOffset = -1;
     private bool _suppressNextCompletionNewline;
     private bool _suppressNextCompletionPeriod;
@@ -807,105 +811,235 @@ public sealed partial class MainWindow : Window
 
     private async void Window_KeyDown(object? sender, KeyEventArgs e)
     {
-        var key = e.Key;
-        var modifiers = e.KeyModifiers;
-        var ctrl = (modifiers & KeyModifiers.Control) != 0;
-        var shift = (modifiers & KeyModifiers.Shift) != 0;
+        var result = _inputHandler.HandleWindowKeyDown(e.Key, e.KeyModifiers);
+        if (!result.Handled) return;
 
-        if (_shortcutPrefix is not null)
+        e.Handled = true;
+        switch (result.Command)
         {
-            var prefix = _shortcutPrefix;
-            _shortcutPrefix = null;
-            if (prefix == "Ctrl+R" && key == Key.T && ctrl)
-            {
-                e.Handled = true;
-                Test_Click(this, new RoutedEventArgs());
-                return;
-            }
-            if (prefix == "Ctrl+K" && ctrl && key is Key.C or Key.U or Key.D or Key.F)
-            {
-                e.Handled = true;
-                if (key is Key.C or Key.U)
-                    ToggleLineComment(uncomment: key == Key.U);
-                else
-                    _ = FormatActiveDocumentAsync(selectionOnly: key == Key.F);
-                return;
-            }
+            case InputCommand.Find: ShowSearchWindow(searchEntireSolution: false); break;
+            case InputCommand.Replace: ShowSearchWindow(searchEntireSolution: false, replaceMode: true); break;
+            case InputCommand.FindInFiles: ShowSearchWindow(searchEntireSolution: true); break;
+            case InputCommand.OpenSolution: OpenSolution_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.OpenFile: await OpenFileAsync(); break;
+            case InputCommand.NewProject: NewProject_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.Save: Save_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.SaveAll: await SaveAllAsync(); break;
+            case InputCommand.Build: Build_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.Start: Start_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.Stop: Stop_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.CloseDocument:
+                if (_activeDocument is not null) await CloseDocumentAsync(_activeDocument);
+                break;
+            case InputCommand.SelectAll:
+                if (Editor.IsFocused) Editor.SelectAll();
+                break;
+            case InputCommand.NextDocument: ActivateAdjacentDocument(1); break;
+            case InputCommand.PreviousDocument: ActivateAdjacentDocument(-1); break;
+            case InputCommand.Test: Test_Click(this, new RoutedEventArgs()); break;
+            case InputCommand.ToggleLineComment: ToggleLineComment(uncomment: false); break;
+            case InputCommand.UncommentLine: ToggleLineComment(uncomment: true); break;
+            case InputCommand.FormatDocument: _ = FormatActiveDocumentAsync(selectionOnly: false); break;
+            case InputCommand.FormatSelection: _ = FormatActiveDocumentAsync(selectionOnly: true); break;
         }
+    }
 
-        if (ctrl && key == Key.K && !shift)
+    private void Find_Click(object? sender, RoutedEventArgs e) => ShowSearchWindow(searchEntireSolution: false);
+    private void Replace_Click(object? sender, RoutedEventArgs e) => ShowSearchWindow(searchEntireSolution: false, replaceMode: true);
+    private void FindInFiles_Click(object? sender, RoutedEventArgs e) => ShowSearchWindow(searchEntireSolution: true);
+
+    private void ShowSearchWindow(bool searchEntireSolution, bool replaceMode = false)
+    {
+        if (_searchWindow is { IsVisible: true })
         {
-            _shortcutPrefix = "Ctrl+K";
-            e.Handled = true;
+            _searchWindow.Activate();
             return;
         }
-        if (ctrl && key == Key.R && !shift)
+
+        var initialQuery = Editor.SelectionLength > 0 ? Editor.SelectedText : string.Empty;
+        var window = new SearchReplaceWindow(
+            initialQuery,
+            searchEntireSolution,
+            SearchAsync,
+            FindNextAsync,
+            ApplySearchHitsAsync,
+            UndoSearchHitsAsync,
+            OpenSearchHitAsync,
+            replaceMode,
+            _lastSearchUndo is { Count: > 0 });
+        _searchWindow = window;
+        window.Closed += (_, _) =>
         {
-            _shortcutPrefix = "Ctrl+R";
-            e.Handled = true;
-            return;
+            if (ReferenceEquals(_searchWindow, window)) _searchWindow = null;
+        };
+        window.Show(this);
+    }
+
+    private Task<IReadOnlyList<SearchHit>> SearchAsync(SearchRequest request, bool entireSolution)
+    {
+        if (!entireSolution && _activeDocument is null)
+            return Task.FromResult<IReadOnlyList<SearchHit>>([]);
+        var activePath = _activeDocument?.FullPath;
+        IEnumerable<string> paths = entireSolution
+            ? Flatten(_roots)
+                .Where(node => node.IsFile && IsSearchableTextFile(node.FullPath))
+                .Select(node => node.FullPath)
+                .Concat(_projects.Select(project => project.FullPath))
+                .Concat(_solutionPath is null ? [] : [_solutionPath])
+                .Concat(activePath is null ? [] : [activePath])
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+            : [activePath!];
+        var openTexts = _documents.ToDictionary(document => document.FullPath, document => document.Text,
+            StringComparer.OrdinalIgnoreCase);
+        return SearchReplaceService.SearchAsync(paths, openTexts, request);
+    }
+
+    private Task<SearchHit?> FindNextAsync(SearchRequest request)
+    {
+        if (_activeDocument is null) return Task.FromResult<SearchHit?>(null);
+        var hits = SearchReplaceService.FindInText(_activeDocument.FullPath, _activeDocument.Text, request);
+        if (hits.Count == 0) return Task.FromResult<SearchHit?>(null);
+        var start = Editor.SelectionLength > 0
+            ? Editor.SelectionStart + Editor.SelectionLength
+            : Editor.CaretOffset;
+        return Task.FromResult<SearchHit?>(hits.FirstOrDefault(hit => hit.Start >= start) ?? hits[0]);
+    }
+
+    private static bool IsSearchableTextFile(string path) => Path.GetExtension(path).ToLowerInvariant() is
+        ".cs" or ".csx" or ".xaml" or ".axaml" or ".xml" or ".json" or ".config" or ".csproj" or
+        ".props" or ".targets" or ".sln" or ".slnx" or ".md" or ".txt" or ".editorconfig" or
+        ".yml" or ".yaml" or ".razor" or ".cshtml";
+
+    private async Task<int> ApplySearchHitsAsync(IReadOnlyList<SearchHit> hits)
+    {
+        var undoEntries = new Dictionary<string, SearchUndoEntry>(StringComparer.OrdinalIgnoreCase);
+        var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var replacementCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in hits.GroupBy(hit => hit.FilePath, StringComparer.OrdinalIgnoreCase))
+        {
+            var document = _documents.FirstOrDefault(item =>
+                string.Equals(item.FullPath, group.Key, StringComparison.OrdinalIgnoreCase));
+            var originalText = document?.Text ?? await File.ReadAllTextAsync(group.Key);
+            var updatedText = originalText;
+            var applicableHits = group
+                .Where(hit => hit.Start >= 0 && hit.Start + hit.Length <= originalText.Length &&
+                              string.Equals(originalText.Substring(hit.Start, hit.Length), hit.MatchedText, StringComparison.Ordinal))
+                .OrderByDescending(hit => hit.Start)
+                .ToArray();
+            if (applicableHits.Length == 0) continue;
+
+            foreach (var hit in applicableHits)
+                updatedText = updatedText[..hit.Start] + hit.ReplacementText + updatedText[(hit.Start + hit.Length)..];
+            undoEntries[group.Key] = new SearchUndoEntry(originalText, updatedText);
+            replacements[group.Key] = updatedText;
+            replacementCounts[group.Key] = applicableHits.Length;
         }
 
-        if (ctrl && shift && key == Key.O)
+        if (replacements.Count == 0) return 0;
+        var changedDiskFiles = new List<string>();
+        try
         {
-            e.Handled = true;
-            OpenSolution_Click(this, new RoutedEventArgs());
+            foreach (var path in replacements.Keys.ToArray())
+            {
+                var document = _documents.FirstOrDefault(open =>
+                    string.Equals(open.FullPath, path, StringComparison.OrdinalIgnoreCase));
+                if (document is not null)
+                {
+                    if (!string.Equals(document.Text, undoEntries[path].Before, StringComparison.Ordinal))
+                    {
+                        replacements.Remove(path);
+                        undoEntries.Remove(path);
+                        replacementCounts.Remove(path);
+                        continue;
+                    }
+                    continue;
+                }
+                var latestText = await File.ReadAllTextAsync(path);
+                if (!string.Equals(latestText, undoEntries[path].Before, StringComparison.Ordinal))
+                {
+                    replacements.Remove(path);
+                    undoEntries.Remove(path);
+                    replacementCounts.Remove(path);
+                    continue;
+                }
+                await File.WriteAllTextAsync(path, replacements[path]);
+                changedDiskFiles.Add(path);
+            }
         }
-        else if (ctrl && key == Key.O)
+        catch
         {
-            e.Handled = true;
-            await OpenFileAsync();
+            foreach (var path in changedDiskFiles)
+                try { await File.WriteAllTextAsync(path, undoEntries[path].Before); } catch { }
+            throw;
         }
-        else if (ctrl && shift && key == Key.N)
+
+        foreach (var item in replacements.ToArray())
         {
-            e.Handled = true;
-            NewProject_Click(this, new RoutedEventArgs());
+            var document = _documents.FirstOrDefault(open =>
+                string.Equals(open.FullPath, item.Key, StringComparison.OrdinalIgnoreCase));
+            if (document is null) continue;
+            if (string.Equals(document.Text, undoEntries[item.Key].After, StringComparison.Ordinal))
+                continue;
+            if (!string.Equals(document.Text, undoEntries[item.Key].Before, StringComparison.Ordinal))
+            {
+                replacements.Remove(item.Key);
+                undoEntries.Remove(item.Key);
+                replacementCounts.Remove(item.Key);
+                continue;
+            }
+            if (ReferenceEquals(document, _activeDocument) && Editor.Document is not null)
+                Editor.Document.Replace(0, Editor.Document.TextLength, item.Value);
+            else
+                document.Text = item.Value;
         }
-        else if (ctrl && shift && key == Key.S)
+
+        _lastSearchUndo = undoEntries;
+        _ = RefreshGitStatusAsync();
+        return replacementCounts.Values.Sum();
+    }
+
+    private async Task<int> UndoSearchHitsAsync()
+    {
+        if (_lastSearchUndo is null || _lastSearchUndo.Count == 0) return 0;
+        var restored = 0;
+        foreach (var item in _lastSearchUndo)
         {
-            e.Handled = true;
-            await SaveAllAsync();
+            var document = _documents.FirstOrDefault(open =>
+                string.Equals(open.FullPath, item.Key, StringComparison.OrdinalIgnoreCase));
+            var currentText = document?.Text ?? await File.ReadAllTextAsync(item.Key);
+            if (!string.Equals(currentText, item.Value.After, StringComparison.Ordinal)) continue;
+
+            if (document is null)
+                await File.WriteAllTextAsync(item.Key, item.Value.Before);
+            else if (ReferenceEquals(document, _activeDocument) && Editor.Document is not null)
+                Editor.Document.Replace(0, Editor.Document.TextLength, item.Value.Before);
+            else
+                document.Text = item.Value.Before;
+            restored++;
         }
-        else if (ctrl && key == Key.S)
+        _lastSearchUndo = null;
+        if (restored > 0) _ = RefreshGitStatusAsync();
+        return restored;
+    }
+
+    private async Task OpenSearchHitAsync(SearchHit hit)
+    {
+        var document = _documents.FirstOrDefault(item =>
+            string.Equals(item.FullPath, hit.FilePath, StringComparison.OrdinalIgnoreCase));
+        if (document is null)
         {
-            e.Handled = true;
-            Save_Click(this, new RoutedEventArgs());
+            await OpenDocumentAsync(new FileNode { Name = Path.GetFileName(hit.FilePath), FullPath = hit.FilePath });
+            document = _documents.FirstOrDefault(item =>
+                string.Equals(item.FullPath, hit.FilePath, StringComparison.OrdinalIgnoreCase));
         }
-        else if (ctrl && shift && key == Key.B)
-        {
-            e.Handled = true;
-            Build_Click(this, new RoutedEventArgs());
-        }
-        else if (key == Key.F5 && shift)
-        {
-            e.Handled = true;
-            Stop_Click(this, new RoutedEventArgs());
-        }
-        else if (key == Key.F5 && ctrl)
-        {
-            e.Handled = true;
-            Start_Click(this, new RoutedEventArgs());
-        }
-        else if (key == Key.F5)
-        {
-            e.Handled = true;
-            Start_Click(this, new RoutedEventArgs());
-        }
-        else if (ctrl && key == Key.F4)
-        {
-            e.Handled = true;
-            if (_activeDocument is not null) await CloseDocumentAsync(_activeDocument);
-        }
-        else if (ctrl && key == Key.A)
-        {
-            e.Handled = true;
-            if (Editor.IsFocused) Editor.SelectAll();
-        }
-        else if (ctrl && key == Key.Tab)
-        {
-            e.Handled = true;
-            ActivateAdjacentDocument(shift ? -1 : 1);
-        }
+        if (document is null) return;
+        ActivateDocument(document);
+        if (Editor.Document is null) return;
+        var start = Math.Clamp(hit.Start, 0, Editor.Document.TextLength);
+        var length = Math.Clamp(hit.Length, 0, Editor.Document.TextLength - start);
+        Editor.Select(start, length);
+        Editor.ScrollToLine(Math.Clamp(hit.Line, 1, Editor.Document.LineCount));
+        Editor.Focus();
     }
 
     private void ActivateAdjacentDocument(int direction)

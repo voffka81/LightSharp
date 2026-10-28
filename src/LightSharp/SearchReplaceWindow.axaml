@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:LightSharp"
+        xmlns:models="using:LightSharp.Models"
+        x:Class="LightSharp.SearchReplaceWindow"
+        x:DataType="local:SearchReplaceWindow"
+        Title="Find and Replace" Width="920" Height="650" MinWidth="720" MinHeight="460"
+        WindowStartupLocation="CenterOwner" Background="{DynamicResource BrushPanelSurface}" Foreground="{DynamicResource BrushTextDialogPrimary}">
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="18" RowSpacing="10">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+      <TextBlock Text="Find" VerticalAlignment="Center"/>
+      <TextBox x:Name="QueryBox" Grid.Column="1" PlaceholderText="Text or regular expression" KeyDown="Input_KeyDown"/>
+      <ComboBox x:Name="ScopeBox" Grid.Column="2" Width="190" SelectedIndex="0">
+        <ComboBoxItem Content="Current document"/>
+        <ComboBoxItem Content="Entire solution"/>
+      </ComboBox>
+    </Grid>
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+      <TextBlock Text="Replace" VerticalAlignment="Center"/>
+      <TextBox x:Name="ReplacementBox" Grid.Column="1" PlaceholderText="Replacement text" KeyDown="Input_KeyDown"/>
+      <Button x:Name="FindButton" Grid.Column="2" Classes="chrome" Content="Find Next" Click="Find_Click"/>
+      <Button Grid.Column="3" Classes="chrome" Content="Find All" Click="FindAll_Click"/>
+    </Grid>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="18">
+      <CheckBox x:Name="MatchCaseBox" Content="Match case"/>
+      <CheckBox x:Name="WholeWordBox" Content="Whole word"/>
+      <CheckBox x:Name="RegexBox" Content="Use regular expressions"/>
+      <TextBlock x:Name="CountText" Foreground="{DynamicResource BrushTextMuted7}" VerticalAlignment="Center"/>
+    </StackPanel>
+    <ListBox x:Name="ResultsList" Grid.Row="3" ItemsSource="{Binding Results}" Background="{DynamicResource BrushInsetSurface}" DoubleTapped="Results_DoubleTapped">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="models:SearchResultItem">
+          <Grid ColumnDefinitions="Auto,*" Margin="4,3" ColumnSpacing="8">
+            <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Top" Margin="0,3,0,0"/>
+            <TextBlock Grid.Column="1" Text="{Binding DisplayText}" FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" TextWrapping="Wrap"/>
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+      <TextBlock x:Name="StatusText" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextMuted7}"/>
+      <Button Grid.Column="1" Classes="chrome" Content="Select All" Click="SelectAll_Click"/>
+      <Button x:Name="ApplyButton" Grid.Column="2" Classes="launch" Content="Apply Selected" Click="Apply_Click" IsEnabled="False"/>
+      <Button x:Name="UndoButton" Grid.Column="3" Classes="chrome" Content="Undo Last Replace" Click="Undo_Click" IsEnabled="False"/>
+      <Button Grid.Column="4" Classes="chrome" Content="Close" Click="Close_Click"/>
+    </Grid>
+  </Grid>
+</Window>
