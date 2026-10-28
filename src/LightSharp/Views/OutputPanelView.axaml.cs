@@ -1,24 +1,56 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using LightSharp.Models;
+using LightSharp.Services;
 
 namespace LightSharp.Views;
 
 public partial class OutputPanelView : UserControl
 {
-    public OutputPanelView() => InitializeComponent();
+    private readonly System.Collections.ObjectModel.ObservableCollection<EditorProblem> _problems = [];
+    private IMessageBus? _messageBus;
 
-    public TextBox Output => OutputTextBox;
-    public ListBox ProblemsList => Problems;
-    public TextBlock StatusText => Status;
-    public TextBlock TestsSummaryText => TestsSummary;
-    public Button ProblemsTabButton => ProblemsTab;
-    public Button OutputTabButton => OutputTab;
-    public Button TestsTabButton => TestsTab;
-    public Control TestsContent => TestsView;
+    public OutputPanelView()
+    {
+        InitializeComponent();
+        Problems.ItemsSource = _problems;
+    }
 
-    public event EventHandler<TappedEventArgs>? ProblemDoubleTapped;
-    public event EventHandler<RoutedEventArgs>? RunTestsRequested;
+    public void AttachMessageBus(IMessageBus messageBus) => _messageBus = messageBus;
+
+    public string StatusMessage
+    {
+        get => Status.Text ?? string.Empty;
+        set => Status.Text = value;
+    }
+
+    public string TestSummary
+    {
+        get => TestsSummary.Text ?? string.Empty;
+        set => TestsSummary.Text = value;
+    }
+
+    public void SetProblems(IEnumerable<EditorProblem> problems)
+    {
+        _problems.Clear();
+        foreach (var problem in problems) _problems.Add(problem);
+        ProblemsTab.Content = _problems.Count > 0 ? $"PROBLEMS ({_problems.Count})" : "PROBLEMS";
+    }
+
+    public void AppendOutput(string line)
+    {
+        OutputTextBox.Text = (OutputTextBox.Text ?? string.Empty) + line + Environment.NewLine;
+        OutputTextBox.CaretIndex = OutputTextBox.Text.Length;
+    }
+
+    public void ClearOutput() => OutputTextBox.Clear();
+
+    public void FocusOutput()
+    {
+        ShowView("Output");
+        OutputTextBox.Focus();
+    }
 
     public void ShowView(string view)
     {
@@ -33,6 +65,10 @@ public partial class OutputPanelView : UserControl
     private void ShowProblems_Click(object? sender, RoutedEventArgs e) => ShowView("Problems");
     private void ShowOutput_Click(object? sender, RoutedEventArgs e) => ShowView("Output");
     private void ShowTests_Click(object? sender, RoutedEventArgs e) => ShowView("Tests");
-    private void Problems_DoubleTapped(object? sender, TappedEventArgs e) => ProblemDoubleTapped?.Invoke(sender, e);
-    private void RunTests_Click(object? sender, RoutedEventArgs e) => RunTestsRequested?.Invoke(sender, e);
+    private void Problems_DoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (Problems.SelectedItem is EditorProblem problem) _messageBus?.Publish(new ProblemActivated(problem));
+    }
+
+    private void RunTests_Click(object? sender, RoutedEventArgs e) => _messageBus?.Publish(new RunTestsRequested());
 }

@@ -19,129 +19,105 @@ namespace LightSharp;
 
 public sealed partial class MainWindow : Window
 {
-    private TreeView FileTree => SolutionExplorerPanel.FileTree;
-    private TextBlock GitRepositoryText => GitChangesPanel.RepositoryText;
-    private Button GitRefreshButton => GitChangesPanel.RefreshAction;
-    private Button GitStageAllButton => GitChangesPanel.StageAllAction;
-    private Button GitFetchButton => GitChangesPanel.FetchAction;
-    private Button GitPullButton => GitChangesPanel.PullAction;
-    private Button GitPushButton => GitChangesPanel.PushAction;
-    private ListBox GitChangesList => GitChangesPanel.Changes;
-    private TextBlock GitEmptyText => GitChangesPanel.EmptyStateText;
-    private TextBox GitCommitMessageBox => GitChangesPanel.MessageInput;
-    private Button GitCommitButton => GitChangesPanel.CommitAction;
-    private ItemsControl DocumentTabs => EditorSurface.DocumentTabs;
-    private AvaloniaEdit.TextEditor Editor => EditorSurface.Editor;
-    private Control EmptyEditorText => EditorSurface.EmptyEditorText;
-    private TextBlock WorkspaceDetailText => PropertiesPanel.WorkspaceDetailText;
-    private TextBox Output => OutputPanel.Output;
-    private ListBox ProblemsList => OutputPanel.ProblemsList;
-    private TextBlock StatusText => OutputPanel.StatusText;
-    private TextBlock TestsSummaryText => OutputPanel.TestsSummaryText;
-    private Button ProblemsTabButton => OutputPanel.ProblemsTabButton;
-    private Button OutputTabButton => OutputPanel.OutputTabButton;
-    private Button TestsTabButton => OutputPanel.TestsTabButton;
-    private Control TestsContent => OutputPanel.TestsContent;
-
     private readonly WorkspaceService _workspace = new();
     private readonly DotNetService _dotnet = new();
-    private readonly GitService _git = new();
-    private readonly CSharpCompletionService _completionService = new();
+    private readonly MessageBus _messageBus = new();
+    private readonly GitChangesController _gitChangesController;
+    private readonly PropertiesPanelController _propertiesPanelController;
+    private readonly OutputPanelController _outputPanelController;
+    private readonly SolutionExplorerController _solutionExplorerController;
+    private readonly EditorWorkspaceController _editorWorkspaceController;
     private readonly InputHandlerService _inputHandler = new();
-    private readonly SyntaxErrorRenderer _syntaxErrorRenderer;
-    private readonly SemanticColorizingTransformer _semanticColorizer;
     private readonly ObservableCollection<FileNode> _roots = [];
     private readonly ObservableCollection<FileNode> _projects = [];
     private readonly ObservableCollection<EditorDocument> _documents = [];
-    private readonly ObservableCollection<EditorProblem> _problems = [];
-    private readonly ObservableCollection<GitChange> _gitChanges = [];
+    private readonly List<IDisposable> _messageSubscriptions = [];
     private string? _workspacePath;
     private string? _solutionPath;
-    private string? _gitRepositoryPath;
     private ToolDock? _solutionExplorerDock;
     private Tool? _gitChangesTool;
     private EditorDocument? _activeDocument;
-    private bool _loadingDocument;
-    private bool _gitOperationRunning;
     private CancellationTokenSource? _commandCts;
-    private CancellationTokenSource? _completionRequestCts;
-    private CancellationTokenSource? _semanticDiagnosticsCts;
-    private string? _lastSemanticDiagnosticsFailure;
-    private CancellationTokenSource? _quickInfoCts;
-    private CompletionWindow? _completionWindow;
     private SearchReplaceWindow? _searchWindow;
     private Dictionary<string, SearchUndoEntry>? _lastSearchUndo;
 
     private sealed record SearchUndoEntry(string Before, string After);
     private readonly DispatcherTimer _diagnosticsTimer;
-    private readonly DispatcherTimer _syntaxDiagnosticsTimer;
-    private readonly DispatcherTimer _quickInfoTimer;
-    private int _hoverOffset = -1;
-    private bool _suppressNextCompletionNewline;
-    private bool _suppressNextCompletionPeriod;
 
     public MainWindow()
     {
         InitializeComponent();
+        SolutionExplorerPanel.AttachMessageBus(_messageBus);
+        EditorSurface.AttachMessageBus(_messageBus);
+        PropertiesPanel.AttachMessageBus(_messageBus);
+        OutputPanel.AttachMessageBus(_messageBus);
+        GitChangesPanel.AttachMessageBus(_messageBus);
+        _gitChangesController = new GitChangesController(GitChangesPanel, new GitService(), _messageBus);
+        _propertiesPanelController = new PropertiesPanelController(
+            _messageBus,
+            () => OpenFolder_Click(this, new RoutedEventArgs()),
+            () => Build_Click(this, new RoutedEventArgs()));
+        _outputPanelController = new OutputPanelController(
+            _messageBus, Problem_Activated,
+            () => Test_Click(this, new RoutedEventArgs()));
+        _solutionExplorerController = new SolutionExplorerController(
+            _messageBus,
+            new SolutionExplorerActionHandlers(
+                OpenDocumentAsync,
+                CreateFileInNodeAsync,
+                NewProjectAsync,
+                AddExistingProjectAsync,
+                () => Build_Click(this, new RoutedEventArgs()),
+                () => Test_Click(this, new RoutedEventArgs()),
+                node => StartupProjectSelector.SelectedItem = node,
+                node => Execute("build", "--configuration", SelectedConfiguration, node.FullPath),
+                node => Execute("test", "--configuration", SelectedConfiguration, node.FullPath),
+                OpenContainingFolder,
+                RefreshWorkspaceAsync));
+        _editorWorkspaceController = new EditorWorkspaceController(
+            EditorSurface, _documents, _projects, OutputPanel, _messageBus,
+            document => ActivateDocument(document),
+            CloseDocumentAsync);
         using (var iconStream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://LightSharp/Assets/LightSharp.png")))
             Icon = new WindowIcon(iconStream);
-        _syntaxErrorRenderer = new SyntaxErrorRenderer(Editor);
-        _semanticColorizer = new SemanticColorizingTransformer(Editor.TextArea.TextView);
-        Editor.TextArea.TextView.LineTransformers.Add(_semanticColorizer);
-        Editor.Options.IndentationSize = 4;
-        Editor.Options.ConvertTabsToSpaces = true;
-        Editor.TextArea.IndentationStrategy = new AvaloniaEdit.Indentation.CSharp.CSharpIndentationStrategy(Editor.Options);
-        SolutionExplorerPanel.FileDoubleTapped += FileTree_DoubleTapped;
-        SolutionExplorerPanel.FileItemRightTapped += FileTreeItem_RightTapped;
-        EditorSurface.DocumentTextChanged += Editor_TextChanged;
-        EditorSurface.EditorKeyDown += Editor_KeyDown;
-        EditorSurface.DocumentActivated += DocumentTab_Click;
-        EditorSurface.DocumentCloseRequested += CloseDocument_Click;
-        PropertiesPanel.OpenFolderRequested += OpenFolder_Click;
-        PropertiesPanel.BuildRequested += Build_Click;
-        OutputPanel.ProblemDoubleTapped += Problem_DoubleTapped;
-        OutputPanel.RunTestsRequested += Test_Click;
-        GitChangesPanel.RefreshAction.Click += RefreshGit_Click;
-        GitChangesPanel.StageAllAction.Click += StageAllGit_Click;
-        GitChangesPanel.FetchAction.Click += FetchGit_Click;
-        GitChangesPanel.PullAction.Click += PullGit_Click;
-        GitChangesPanel.PushAction.Click += PushGit_Click;
-        GitChangesPanel.CommitAction.Click += CommitGit_Click;
         InitializeDockLayout();
-        FileTree.ItemsSource = _roots;
+        SolutionExplorerPanel.SetRoots(_roots);
+        SolutionExplorerPanel.SetWorkspaceContext(_solutionPath, hasWorkspace: false);
         StartupProjectSelector.ItemsSource = _projects;
-        DocumentTabs.ItemsSource = _documents;
-        ProblemsList.ItemsSource = _problems;
-        GitChangesList.ItemsSource = _gitChanges;
         GitMenuItem.IsEnabled = false;
-        GitEmptyText.Text = "Open a workspace to connect Git.";
-        Editor.TextArea.Caret.PositionChanged += (_, _) => UpdateCursorStatus();
-        Editor.TextArea.TextEntered += Editor_TextEntered;
-        Editor.TextArea.TextEntering += Editor_TextEntering;
-        Closed += (_, _) =>
+        _messageSubscriptions.Add(_messageBus.Observe<StatusMessageChanged>().Subscribe(message => OutputPanel.StatusMessage = message.Message));
+        _messageSubscriptions.Add(_messageBus.Observe<OutputLineRequested>().Subscribe(message => AppendOutput(message.Line)));
+        _messageSubscriptions.Add(_messageBus.Observe<GitBranchChanged>().Subscribe(message =>
         {
-            _completionRequestCts?.Cancel();
-            _semanticDiagnosticsCts?.Cancel();
-            _quickInfoCts?.Cancel();
-            _quickInfoTimer?.Stop();
-            _completionWindow?.Hide();
-            _completionService.Dispose();
-        };
+            if (!string.IsNullOrEmpty(message.Branch)) BranchStatusText.Text = message.Branch;
+        }));
+        _messageSubscriptions.Add(_messageBus.Observe<GitRepositoryAvailabilityChanged>().Subscribe(message =>
+        {
+            GitMenuItem.IsEnabled = message.HasWorkspace;
+            GitChangesMenuItem.IsVisible = message.HasRepository;
+            RefreshGitMenuItem.IsVisible = message.HasRepository;
+            GitMenuSeparator.IsVisible = message.HasRepository;
+            InitializeGitMenuItem.IsVisible = message.HasWorkspace && !message.HasRepository;
+            StageAllGitMenuItem.IsVisible = message.HasRepository;
+            CommitGitMenuItem.IsVisible = message.HasRepository;
+        }));
+        _messageSubscriptions.Add(_messageBus.Observe<EditorStatusChanged>().Subscribe(message => EditorStatusText.Text = message.Message));
+        _messageSubscriptions.Add(_messageBus.Observe<EditorCursorChanged>().Subscribe(message => CursorStatusText.Text = $"Ln {message.Line}, Col {message.Column}"));
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _diagnosticsTimer.Tick += (_, _) => UpdateDiagnostics();
         _diagnosticsTimer.Start();
-        _syntaxDiagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
-        _syntaxDiagnosticsTimer.Tick += (_, _) =>
+        Closed += (_, _) =>
         {
-            _syntaxDiagnosticsTimer.Stop();
-            UpdateSyntaxDiagnostics();
+            _diagnosticsTimer.Stop();
+            _commandCts?.Cancel();
+            _editorWorkspaceController.Dispose();
+            _gitChangesController.Dispose();
+            _propertiesPanelController.Dispose();
+            _outputPanelController.Dispose();
+            _solutionExplorerController.Dispose();
+            foreach (var subscription in _messageSubscriptions) subscription.Dispose();
         };
-        _quickInfoTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(450) };
-        _quickInfoTimer.Tick += async (_, _) => await ShowQuickInfoAsync();
-        Editor.TextArea.TextView.PointerMoved += EditorTextView_PointerMoved;
-        Editor.TextArea.TextView.PointerExited += EditorTextView_PointerExited;
         UpdateDiagnostics();
-        UpdateCursorStatus();
     }
 
     private void InitializeDockLayout()
@@ -322,8 +298,8 @@ public sealed partial class MainWindow : Window
         _workspacePath = path;
         var solutionName = selectedSolutionPath is null ? null : Path.GetFileName(selectedSolutionPath);
         WorkspaceText.Text = solutionName ?? Path.GetFileName(path);
-        WorkspaceDetailText.Text = path;
-        StatusText.Text = "Loading workspace...";
+        PropertiesPanel.SetWorkspacePath(path);
+        OutputPanel.StatusMessage = "Loading workspace...";
         _roots.Clear();
         _projects.Clear();
         var nodes = await _workspace.LoadAsync(path);
@@ -332,6 +308,7 @@ public sealed partial class MainWindow : Window
             (Path.GetExtension(node.Name).Equals(".sln", StringComparison.OrdinalIgnoreCase) ||
              Path.GetExtension(node.Name).Equals(".slnx", StringComparison.OrdinalIgnoreCase)));
         _solutionPath = solution?.FullPath;
+        SolutionExplorerPanel.SetWorkspaceContext(_solutionPath, hasWorkspace: true);
 
         if (solution is not null)
         {
@@ -353,66 +330,8 @@ public sealed partial class MainWindow : Window
         }
         StartupProjectSelector.SelectedItem = _projects.FirstOrDefault();
         SyncSolutionExplorerToActiveDocument();
-        StatusText.Text = "Ready";
+        OutputPanel.StatusMessage = "Ready";
         await RefreshGitStatusAsync();
-    }
-
-    private async void FileTree_DoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
-    {
-        if (FileTree.SelectedItem is not FileNode { IsDirectory: false } node) return;
-        await OpenDocumentAsync(node);
-    }
-
-    private void FileTreeItem_RightTapped(object? sender, Avalonia.Input.TappedEventArgs e)
-    {
-        if (sender is not Control { DataContext: FileNode node } control) return;
-        FileTree.SelectedItem = node;
-
-        var menu = new ContextMenu();
-        void Add(string header, EventHandler<RoutedEventArgs> action)
-        {
-            var item = new MenuItem { Header = header };
-            item.Click += (s, args) => action(s ?? item, args);
-            menu.Items.Add(item);
-        }
-        void Separator() => menu.Items.Add(new Separator());
-
-        var isSolution = string.Equals(node.FullPath, _solutionPath, StringComparison.OrdinalIgnoreCase);
-        var isProject = Path.GetExtension(node.Name).Equals(".csproj", StringComparison.OrdinalIgnoreCase);
-
-        if (!node.IsDirectory)
-            Add("Open", async (_, _) => await OpenDocumentAsync(node));
-
-        Add("Add > New File...", async (_, _) => await CreateFileInNodeAsync(node));
-
-        if (isSolution)
-        {
-            if (menu.Items.Count > 0) Separator();
-            Add("Add > New Project...", (_, _) => NewProject_Click(this, new RoutedEventArgs()));
-            Add("Add > Existing Project...", async (_, _) => await AddExistingProjectAsync());
-            Separator();
-            Add("Build Solution", (_, _) => Build_Click(this, new RoutedEventArgs()));
-            Add("Run Tests", (_, _) => Test_Click(this, new RoutedEventArgs()));
-        }
-        else if (isProject)
-        {
-            Separator();
-            Add("Set as Startup Project", (_, _) => StartupProjectSelector.SelectedItem = node);
-            Add("Build", (_, _) => Execute("build", "--configuration", SelectedConfiguration, node.FullPath));
-            Add("Run Tests", (_, _) => Execute("test", "--configuration", SelectedConfiguration, node.FullPath));
-        }
-
-        Separator();
-        Add("Open Containing Folder", (_, _) => OpenContainingFolder(node));
-        if (_workspacePath is not null)
-        {
-            Separator();
-            Add("Refresh", async (_, _) => await RefreshWorkspaceAsync());
-        }
-
-        menu.Placement = PlacementMode.Pointer;
-        control.ContextMenu = menu;
-        menu.Open(control);
     }
 
     private async Task AddExistingProjectAsync()
@@ -441,7 +360,7 @@ public sealed partial class MainWindow : Window
     {
         var directory = GetDefaultNewFileDirectory();
         if (directory is not null) await CreateNewFileAsync(directory);
-        else StatusText.Text = "Open a workspace or project first";
+        else OutputPanel.StatusMessage = "Open a workspace or project first";
     }
 
     private Task CreateFileInNodeAsync(FileNode node)
@@ -481,7 +400,7 @@ public sealed partial class MainWindow : Window
     {
         if (!Directory.Exists(directory))
         {
-            StatusText.Text = "The selected folder no longer exists";
+            OutputPanel.StatusMessage = "The selected folder no longer exists";
             return;
         }
 
@@ -490,7 +409,7 @@ public sealed partial class MainWindow : Window
         var filePath = Path.GetFullPath(Path.Combine(directory, dialog.FileName));
         if (File.Exists(filePath) || Directory.Exists(filePath))
         {
-            StatusText.Text = $"A file named {dialog.FileName} already exists";
+            OutputPanel.StatusMessage = $"A file named {dialog.FileName} already exists";
             return;
         }
 
@@ -504,12 +423,12 @@ public sealed partial class MainWindow : Window
                 string.Equals(item.FullPath, filePath, StringComparison.OrdinalIgnoreCase))
                 ?? new FileNode { Name = Path.GetFileName(filePath), FullPath = filePath };
             await OpenDocumentAsync(node);
-            StatusText.Text = $"Created {Path.GetFileName(filePath)}";
+            OutputPanel.StatusMessage = $"Created {Path.GetFileName(filePath)}";
         }
         catch (Exception ex)
         {
             AppendOutput($"Unable to create file: {ex.Message}");
-            StatusText.Text = "File creation failed";
+            OutputPanel.StatusMessage = "File creation failed";
         }
     }
 
@@ -545,7 +464,7 @@ public sealed partial class MainWindow : Window
         {
             await File.WriteAllTextAsync(_activeDocument.FullPath, _activeDocument.Text);
             _activeDocument.MarkSaved();
-            StatusText.Text = $"Saved {_activeDocument.Name}";
+            OutputPanel.StatusMessage = $"Saved {_activeDocument.Name}";
         }
         catch (Exception ex) { AppendOutput(ex.Message); }
     }
@@ -562,11 +481,11 @@ public sealed partial class MainWindow : Window
             catch (Exception ex)
             {
                 AppendOutput($"Unable to save {document.Name}: {ex.Message}");
-                StatusText.Text = $"Could not save {document.Name}";
+                OutputPanel.StatusMessage = $"Could not save {document.Name}";
                 return;
             }
         }
-        StatusText.Text = "All files saved";
+        OutputPanel.StatusMessage = "All files saved";
     }
 
     private async void SaveAll_Click(object? sender, RoutedEventArgs e) => await SaveAllAsync();
@@ -574,7 +493,9 @@ public sealed partial class MainWindow : Window
     private string SelectedConfiguration =>
         (ConfigurationSelector.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Debug";
 
-    private async void NewProject_Click(object? sender, RoutedEventArgs e)
+    private async void NewProject_Click(object? sender, RoutedEventArgs e) => await NewProjectAsync();
+
+    private async Task NewProjectAsync()
     {
         var defaultLocation = _solutionPath is not null
             ? Path.GetDirectoryName(_solutionPath)
@@ -594,7 +515,7 @@ public sealed partial class MainWindow : Window
         if (projectFile is null)
         {
             AppendOutput("The selected template did not create a C# project file.");
-            StatusText.Text = "Project creation failed";
+            OutputPanel.StatusMessage = "Project creation failed";
             return;
         }
 
@@ -611,7 +532,7 @@ public sealed partial class MainWindow : Window
         if (solutionPath is null)
         {
             AppendOutput("The solution file could not be found after creation.");
-            StatusText.Text = "Project created, solution setup failed";
+            OutputPanel.StatusMessage = "Project created, solution setup failed";
             return;
         }
 
@@ -622,7 +543,7 @@ public sealed partial class MainWindow : Window
         await LoadWorkspaceAsync(solutionDirectory, solutionPath);
         StartupProjectSelector.SelectedItem = _projects.FirstOrDefault(project =>
             string.Equals(project.FullPath, projectFile, StringComparison.OrdinalIgnoreCase));
-        StatusText.Text = $"Created {dialog.ProjectName}";
+        OutputPanel.StatusMessage = $"Created {dialog.ProjectName}";
     }
 
     private void Build_Click(object? s, RoutedEventArgs e) => Execute("build", "--configuration", SelectedConfiguration);
@@ -640,7 +561,7 @@ public sealed partial class MainWindow : Window
         _commandCts?.Cancel();
         _dotnet.Stop();
         StopButton.IsEnabled = false;
-        StatusText.Text = "Stopped";
+        OutputPanel.StatusMessage = "Stopped";
     }
 
     private async void Execute(params string[] arguments)
@@ -655,48 +576,44 @@ public sealed partial class MainWindow : Window
         _commandCts?.Dispose();
         var commandCts = new CancellationTokenSource();
         _commandCts = commandCts;
-        Output.Text = string.Empty;
+        OutputPanel.ClearOutput();
         var isTestRun = arguments.FirstOrDefault()?.Equals("test", StringComparison.OrdinalIgnoreCase) == true;
         ShowOutputView(isTestRun ? "Tests" : "Output");
         OutputPanel.IsVisible = true;
         var command = string.Join(" ", arguments);
-        StatusText.Text = $"dotnet {command}...";
+        OutputPanel.StatusMessage = $"dotnet {command}...";
         StopButton.IsEnabled = true;
         var exitCode = await _dotnet.ExecuteAsync(workingDirectory, arguments, AppendOutput, commandCts.Token);
         if (!ReferenceEquals(_commandCts, commandCts)) return exitCode;
         _commandCts.Dispose();
         _commandCts = null;
         StopButton.IsEnabled = false;
-        StatusText.Text = $"dotnet {command} exited with code {exitCode}";
+        OutputPanel.StatusMessage = $"dotnet {command} exited with code {exitCode}";
         if (isTestRun)
-            TestsSummaryText.Text = exitCode == 0
+            OutputPanel.TestSummary = exitCode == 0
                 ? "Test run completed successfully. See Output for detailed results."
                 : $"Test run failed (exit code {exitCode}). See Output for details.";
         return exitCode;
     }
 
-    private void SelectAll_Click(object? sender, RoutedEventArgs e) => Editor.SelectAll();
+    private void SelectAll_Click(object? sender, RoutedEventArgs e) => _editorWorkspaceController.SelectAllIfFocused();
+    private void Comment_Click(object? sender, RoutedEventArgs e) => _editorWorkspaceController.ToggleLineComment(uncomment: false);
+    private void Uncomment_Click(object? sender, RoutedEventArgs e) => _editorWorkspaceController.ToggleLineComment(uncomment: true);
+    private async void FormatDocument_Click(object? sender, RoutedEventArgs e) => await _editorWorkspaceController.FormatActiveDocumentAsync(selectionOnly: false);
+    private async void FormatSelection_Click(object? sender, RoutedEventArgs e) => await _editorWorkspaceController.FormatActiveDocumentAsync(selectionOnly: true);
 
     private void FocusOutput_Click(object? sender, RoutedEventArgs e)
     {
         OutputPanel.IsVisible = true;
         ShowOutputView("Output");
-        Output.Focus();
+        OutputPanel.FocusOutput();
     }
 
     private void ShowProblems_Click(object? sender, RoutedEventArgs e) => ShowOutputView("Problems");
     private void ShowOutput_Click(object? sender, RoutedEventArgs e) => ShowOutputView("Output");
     private void ShowTests_Click(object? sender, RoutedEventArgs e) => ShowOutputView("Tests");
 
-    private void ShowOutputView(string view)
-    {
-        ProblemsTabButton.Classes.Set("selected", view == "Problems");
-        OutputTabButton.Classes.Set("selected", view == "Output");
-        TestsTabButton.Classes.Set("selected", view == "Tests");
-        ProblemsList.IsVisible = view == "Problems";
-        Output.IsVisible = view == "Output";
-        TestsContent.IsVisible = view == "Tests";
-    }
+    private void ShowOutputView(string view) => OutputPanel.ShowView(view);
 
     private void ShowGitChanges_Click(object? sender, RoutedEventArgs e)
     {
@@ -705,172 +622,26 @@ public sealed partial class MainWindow : Window
         _ = RefreshGitStatusAsync();
     }
 
-    private async void RefreshGit_Click(object? sender, RoutedEventArgs e) => await RefreshGitStatusAsync();
+    private async void RefreshGit_Click(object? sender, RoutedEventArgs e) => await _gitChangesController.RefreshAsync();
 
-    private async Task RefreshGitStatusAsync()
-    {
-        _gitChanges.Clear();
-        _gitRepositoryPath = _workspacePath is null ? null : _git.FindRepositoryRoot(_workspacePath);
-        var hasRepository = _gitRepositoryPath is not null;
-        GitMenuItem.IsEnabled = _workspacePath is not null;
-        GitChangesMenuItem.IsVisible = hasRepository;
-        RefreshGitMenuItem.IsVisible = hasRepository;
-        GitMenuSeparator.IsVisible = hasRepository;
-        InitializeGitMenuItem.IsVisible = _workspacePath is not null && !hasRepository;
-        StageAllGitMenuItem.IsVisible = hasRepository;
-        CommitGitMenuItem.IsVisible = hasRepository;
-        SetGitOperationButtonsEnabled(hasRepository && !_gitOperationRunning);
-
-        if (!hasRepository)
-        {
-            BranchStatusText.Text = "⎇  No repository";
-            GitRepositoryText.Text = "Not a Git repository";
-            GitEmptyText.Text = _workspacePath is null ? "Open a workspace to connect Git." : "Use Git > Initialize Repository to create a repository.";
-            GitEmptyText.IsVisible = true;
-            return;
-        }
-
-        try
-        {
-            var status = await _git.GetStatusAsync(_gitRepositoryPath!);
-            BranchStatusText.Text = $"⎇  {status.Branch}";
-            GitRepositoryText.Text = $"{_gitRepositoryPath} · {status.Branch}";
-            foreach (var change in status.Changes) _gitChanges.Add(change);
-            GitEmptyText.IsVisible = _gitChanges.Count == 0;
-            GitEmptyText.Text = _gitChanges.Count == 0 ? "No changes detected." : string.Empty;
-        }
-        catch (Exception ex)
-        {
-            GitRepositoryText.Text = _gitRepositoryPath!;
-            GitEmptyText.Text = ex.Message;
-            GitEmptyText.IsVisible = true;
-            AppendOutput($"Git status unavailable: {ex.Message}");
-        }
-    }
+    private Task RefreshGitStatusAsync() => _gitChangesController.SetWorkspaceAsync(_workspacePath);
 
     private async void InitializeGit_Click(object? sender, RoutedEventArgs e)
     {
-        if (_workspacePath is null) return;
-        try
-        {
-            await _git.InitializeAsync(_workspacePath);
-            await RefreshGitStatusAsync();
-            ShowGitChanges_Click(this, new RoutedEventArgs());
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Unable to initialize Git repository: {ex.Message}");
-            StatusText.Text = "Git initialization failed";
-        }
+        await _gitChangesController.InitializeAsync();
+        ShowGitChanges_Click(this, new RoutedEventArgs());
     }
 
-    private async void StageAllGit_Click(object? sender, RoutedEventArgs e)
+    private async void StageAllGit_Click(object? sender, RoutedEventArgs e) => await _gitChangesController.StageAllAsync();
+    private void CommitGit_Click(object? sender, RoutedEventArgs e) => ShowGitChanges_Click(sender, e);
+    private void FetchGit_Click(object? sender, RoutedEventArgs e) => _messageBus.Publish(new GitFetchRequested());
+    private void PullGit_Click(object? sender, RoutedEventArgs e) => _messageBus.Publish(new GitPullRequested());
+    private void PushGit_Click(object? sender, RoutedEventArgs e) => _messageBus.Publish(new GitPushRequested());
+
+    private void Problem_Activated(EditorProblem problem)
     {
-        if (_gitRepositoryPath is null) return;
-        try
-        {
-            await _git.StageAllAsync(_gitRepositoryPath);
-            await RefreshGitStatusAsync();
-            StatusText.Text = "All changes staged";
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Unable to stage Git changes: {ex.Message}");
-            StatusText.Text = "Git staging failed";
-        }
+        _editorWorkspaceController.NavigateTo(problem.Line, problem.Column);
     }
-
-    private async void CommitGit_Click(object? sender, RoutedEventArgs e)
-    {
-        if (_gitRepositoryPath is null) return;
-        var message = GitCommitMessageBox.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            StatusText.Text = "Enter a commit message";
-            GitCommitMessageBox.Focus();
-            return;
-        }
-
-        try
-        {
-            var result = await _git.CommitAllAsync(_gitRepositoryPath, message);
-            AppendOutput(result);
-            GitCommitMessageBox.Clear();
-            await RefreshGitStatusAsync();
-            StatusText.Text = "Commit created";
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Git commit failed: {ex.Message}");
-            StatusText.Text = "Git commit failed";
-        }
-    }
-
-    private async void FetchGit_Click(object? sender, RoutedEventArgs e) =>
-        await RunGitRemoteOperationAsync("fetch", _git.FetchAsync);
-
-    private async void PullGit_Click(object? sender, RoutedEventArgs e) =>
-        await RunGitRemoteOperationAsync("pull", _git.PullAsync);
-
-    private async void PushGit_Click(object? sender, RoutedEventArgs e) =>
-        await RunGitRemoteOperationAsync("push", _git.PushAsync);
-
-    private async Task RunGitRemoteOperationAsync(string operation, Func<string, CancellationToken, Task<string>> run)
-    {
-        if (_gitRepositoryPath is null || _gitOperationRunning) return;
-
-        var repositoryPath = _gitRepositoryPath;
-        _gitOperationRunning = true;
-        SetGitOperationButtonsEnabled(false);
-        StatusText.Text = $"Git {operation} in progress...";
-        try
-        {
-            var output = await run(repositoryPath, CancellationToken.None);
-            if (!string.IsNullOrWhiteSpace(output)) AppendOutput(output);
-            await RefreshGitStatusAsync();
-            StatusText.Text = $"Git {operation} completed";
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Git {operation} failed: {ex.Message}");
-            StatusText.Text = $"Git {operation} failed";
-        }
-        finally
-        {
-            _gitOperationRunning = false;
-            SetGitOperationButtonsEnabled(_gitRepositoryPath is not null);
-        }
-    }
-
-    private void SetGitOperationButtonsEnabled(bool enabled)
-    {
-        GitRefreshButton.IsEnabled = enabled;
-        GitStageAllButton.IsEnabled = enabled;
-        GitFetchButton.IsEnabled = enabled;
-        GitPullButton.IsEnabled = enabled;
-        GitPushButton.IsEnabled = enabled;
-    }
-
-    private void Problem_DoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (ProblemsList.SelectedItem is not EditorProblem problem || Editor.Document is null) return;
-        var line = Editor.Document.GetLineByNumber(Math.Clamp(problem.Line, 1, Editor.Document.LineCount));
-        Editor.CaretOffset = Math.Min(line.Offset + problem.Column - 1, line.EndOffset);
-        Editor.ScrollToLine(line.LineNumber);
-        Editor.Focus();
-    }
-
-    private void DocumentTab_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Button { DataContext: EditorDocument document }) ActivateDocument(document);
-    }
-
-    private async void CloseDocument_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { DataContext: EditorDocument document }) return;
-        await CloseDocumentAsync(document);
-    }
-
     private async Task CloseDocumentAsync(EditorDocument document)
     {
         if (document.IsDirty)
@@ -887,7 +658,7 @@ public sealed partial class MainWindow : Window
                 catch (Exception ex)
                 {
                     AppendOutput($"Unable to save {document.Name}: {ex.Message}");
-                    StatusText.Text = $"Could not save {document.Name}";
+                    OutputPanel.StatusMessage = $"Could not save {document.Name}";
                     return;
                 }
             }
@@ -921,15 +692,15 @@ public sealed partial class MainWindow : Window
                 if (_activeDocument is not null) await CloseDocumentAsync(_activeDocument);
                 break;
             case InputCommand.SelectAll:
-                if (Editor.IsFocused) Editor.SelectAll();
+                if (EditorSurface.IsEditorFocused) EditorSurface.SelectAll();
                 break;
             case InputCommand.NextDocument: ActivateAdjacentDocument(1); break;
             case InputCommand.PreviousDocument: ActivateAdjacentDocument(-1); break;
             case InputCommand.Test: Test_Click(this, new RoutedEventArgs()); break;
-            case InputCommand.ToggleLineComment: ToggleLineComment(uncomment: false); break;
-            case InputCommand.UncommentLine: ToggleLineComment(uncomment: true); break;
-            case InputCommand.FormatDocument: _ = FormatActiveDocumentAsync(selectionOnly: false); break;
-            case InputCommand.FormatSelection: _ = FormatActiveDocumentAsync(selectionOnly: true); break;
+            case InputCommand.ToggleLineComment: _editorWorkspaceController.ToggleLineComment(uncomment: false); break;
+            case InputCommand.UncommentLine: _editorWorkspaceController.ToggleLineComment(uncomment: true); break;
+            case InputCommand.FormatDocument: _ = _editorWorkspaceController.FormatActiveDocumentAsync(selectionOnly: false); break;
+            case InputCommand.FormatSelection: _ = _editorWorkspaceController.FormatActiveDocumentAsync(selectionOnly: true); break;
         }
     }
 
@@ -945,7 +716,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var initialQuery = Editor.SelectionLength > 0 ? Editor.SelectedText : string.Empty;
+        var initialQuery = EditorSurface.SelectionLength > 0 ? EditorSurface.SelectedText : string.Empty;
         var window = new SearchReplaceWindow(
             initialQuery,
             searchEntireSolution,
@@ -988,9 +759,9 @@ public sealed partial class MainWindow : Window
         if (_activeDocument is null) return Task.FromResult<SearchHit?>(null);
         var hits = SearchReplaceService.FindInText(_activeDocument.FullPath, _activeDocument.Text, request);
         if (hits.Count == 0) return Task.FromResult<SearchHit?>(null);
-        var start = Editor.SelectionLength > 0
-            ? Editor.SelectionStart + Editor.SelectionLength
-            : Editor.CaretOffset;
+        var start = EditorSurface.SelectionLength > 0
+            ? EditorSurface.SelectionStart + EditorSurface.SelectionLength
+            : EditorSurface.CaretOffset;
         return Task.FromResult<SearchHit?>(hits.FirstOrDefault(hit => hit.Start >= start) ?? hits[0]);
     }
 
@@ -1076,8 +847,8 @@ public sealed partial class MainWindow : Window
                 replacementCounts.Remove(item.Key);
                 continue;
             }
-            if (ReferenceEquals(document, _activeDocument) && Editor.Document is not null)
-                Editor.Document.Replace(0, Editor.Document.TextLength, item.Value);
+            if (ReferenceEquals(document, _activeDocument) && EditorSurface.HasDocument)
+                EditorSurface.ReplaceAllText(item.Value);
             else
                 document.Text = item.Value;
         }
@@ -1100,8 +871,8 @@ public sealed partial class MainWindow : Window
 
             if (document is null)
                 await File.WriteAllTextAsync(item.Key, item.Value.Before);
-            else if (ReferenceEquals(document, _activeDocument) && Editor.Document is not null)
-                Editor.Document.Replace(0, Editor.Document.TextLength, item.Value.Before);
+            else if (ReferenceEquals(document, _activeDocument) && EditorSurface.HasDocument)
+                EditorSurface.ReplaceAllText(item.Value.Before);
             else
                 document.Text = item.Value.Before;
             restored++;
@@ -1123,12 +894,12 @@ public sealed partial class MainWindow : Window
         }
         if (document is null) return;
         ActivateDocument(document);
-        if (Editor.Document is null) return;
-        var start = Math.Clamp(hit.Start, 0, Editor.Document.TextLength);
-        var length = Math.Clamp(hit.Length, 0, Editor.Document.TextLength - start);
-        Editor.Select(start, length);
-        Editor.ScrollToLine(Math.Clamp(hit.Line, 1, Editor.Document.LineCount));
-        Editor.Focus();
+        if (!EditorSurface.HasDocument) return;
+        var start = Math.Clamp(hit.Start, 0, EditorSurface.TextLength);
+        var length = Math.Clamp(hit.Length, 0, EditorSurface.TextLength - start);
+        EditorSurface.Select(start, length);
+        EditorSurface.ScrollToLine(Math.Clamp(hit.Line, 1, EditorSurface.LineCount));
+        EditorSurface.FocusEditor();
     }
 
     private void ActivateAdjacentDocument(int direction)
@@ -1139,575 +910,6 @@ public sealed partial class MainWindow : Window
         ActivateDocument(_documents[nextIndex]);
     }
 
-    private void ToggleLineComment(bool uncomment)
-    {
-        var document = Editor.Document;
-        var selectionStart = Editor.SelectionStart;
-        var selectionLength = Editor.SelectionLength;
-        var startLine = document.GetLineByOffset(selectionLength == 0 ? Editor.CaretOffset : selectionStart);
-        var endOffset = selectionLength == 0 ? Editor.CaretOffset : Math.Max(selectionStart, selectionStart + selectionLength - 1);
-        var endLine = document.GetLineByOffset(endOffset);
-        var lines = Enumerable.Range(startLine.LineNumber, endLine.LineNumber - startLine.LineNumber + 1)
-            .Select(number => document.GetLineByNumber(number)).ToArray();
-
-        document.BeginUpdate();
-        try
-        {
-            foreach (var line in lines.Reverse())
-            {
-                var text = document.GetText(line);
-                var indentation = text.Length - text.TrimStart().Length;
-                var commentOffset = line.Offset + indentation;
-                if (uncomment)
-                {
-                    if (text.AsSpan(indentation).StartsWith("//", StringComparison.Ordinal))
-                        document.Remove(commentOffset, 2);
-                }
-                else if (!text.AsSpan(indentation).StartsWith("//", StringComparison.Ordinal))
-                    document.Insert(commentOffset, "//");
-            }
-        }
-        finally { document.EndUpdate(); }
-    }
-
-    private void Comment_Click(object? sender, RoutedEventArgs e) => ToggleLineComment(uncomment: false);
-    private void Uncomment_Click(object? sender, RoutedEventArgs e) => ToggleLineComment(uncomment: true);
-    private async void FormatDocument_Click(object? sender, RoutedEventArgs e) => await FormatActiveDocumentAsync(selectionOnly: false);
-    private async void FormatSelection_Click(object? sender, RoutedEventArgs e) => await FormatActiveDocumentAsync(selectionOnly: true);
-
-    private async Task FormatActiveDocumentAsync(bool selectionOnly)
-    {
-        if (_activeDocument is null) return;
-        var activeDocument = _activeDocument;
-        var selectionStart = Editor.SelectionStart;
-        var selectionLength = Editor.SelectionLength;
-        if (selectionOnly && selectionLength == 0)
-        {
-            StatusText.Text = "Select code to format";
-            return;
-        }
-
-        var source = Editor.Text ?? string.Empty;
-        var caretOffset = Editor.CaretOffset;
-        var projectPath = FindProjectForFile(activeDocument.FullPath);
-        try
-        {
-            var formatted = await _completionService.FormatAsync(
-                projectPath,
-                activeDocument.FullPath,
-                source,
-                selectionOnly ? new Microsoft.CodeAnalysis.Text.TextSpan(selectionStart, selectionLength) : null,
-                CancellationToken.None);
-            if (!ReferenceEquals(_activeDocument, activeDocument) || !string.Equals(Editor.Text, source, StringComparison.Ordinal)) return;
-
-            Editor.Document.Replace(0, Editor.Document.TextLength, formatted);
-            Editor.CaretOffset = Math.Min(caretOffset, Editor.Document.TextLength);
-            StatusText.Text = "Formatting complete";
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Unable to format document: {ex.Message}");
-            StatusText.Text = "Formatting failed";
-        }
-    }
-
-    private void Editor_TextChanged(object? sender, EventArgs e)
-    {
-        if (_loadingDocument || _activeDocument is null) return;
-        _activeDocument.Text = Editor.Text ?? string.Empty;
-        _syntaxDiagnosticsTimer.Stop();
-        _syntaxDiagnosticsTimer.Start();
-    }
-
-    private void Editor_TextEntered(object? sender, TextInputEventArgs e)
-    {
-        if (string.IsNullOrEmpty(e.Text) || e.Text.Length != 1) return;
-        var character = e.Text[0];
-        var source = Editor.Text ?? string.Empty;
-        var afterAssignment = source[..Math.Clamp(Editor.CaretOffset, 0, source.Length)].TrimEnd().EndsWith('=');
-        if (afterAssignment && (character == '=' || char.IsWhiteSpace(character)))
-        {
-            if (_completionWindow is not null)
-            {
-                _completionWindow.Hide();
-                _completionWindow = null;
-            }
-            _ = ShowCompletionAsync(null, explicitInvocation: true);
-            return;
-        }
-
-        if (_completionWindow is not null) return;
-        if (character == '.' || char.IsLetterOrDigit(character) || character == '_')
-            _ = ShowCompletionAsync(character, explicitInvocation: false);
-    }
-
-    private void Editor_TextEntering(object? sender, TextInputEventArgs e)
-    {
-        if (_suppressNextCompletionNewline && e.Text is "\r" or "\n" or "\r\n")
-        {
-            _suppressNextCompletionNewline = false;
-            e.Handled = true;
-        }
-        else if (_suppressNextCompletionPeriod && e.Text == ".")
-        {
-            _suppressNextCompletionPeriod = false;
-            e.Handled = true;
-        }
-    }
-
-    private void Editor_KeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter) _suppressNextCompletionNewline = false;
-        if (e.Key is not (Key.OemPeriod or Key.Decimal)) _suppressNextCompletionPeriod = false;
-
-        if (e.Key == Key.Enter && (e.KeyModifiers & KeyModifiers.Alt) != 0)
-        {
-            e.Handled = true;
-            _ = ShowAddUsingActionsAsync();
-            return;
-        }
-
-        if (_completionWindow is not null && e.Key is Key.Enter or Key.Tab or Key.OemPeriod or Key.Decimal)
-        {
-            var list = _completionWindow.CompletionList;
-            if (list.SelectedItem is null && list.CompletionData.Count > 0)
-                list.SelectedItem = list.CompletionData[0];
-            if (list.SelectedItem is not null)
-            {
-                PrepareCompletionCommit(e.Key);
-                e.Handled = true;
-                list.RequestInsertion(e);
-                return;
-            }
-        }
-
-        if (e.Key != Key.Space || (e.KeyModifiers & KeyModifiers.Control) == 0) return;
-        e.Handled = true;
-        _ = ShowCompletionAsync(null, explicitInvocation: true);
-    }
-
-    private char? PrepareCompletionCommit(EventArgs request)
-    {
-        return request is KeyEventArgs keyEvent ? PrepareCompletionCommit(keyEvent.Key) : null;
-    }
-
-    private char? PrepareCompletionCommit(Key key)
-    {
-        if (key == Key.Enter)
-            _suppressNextCompletionNewline = true;
-        else if (key is Key.OemPeriod or Key.Decimal)
-        {
-            _suppressNextCompletionPeriod = true;
-            return "."[0];
-        }
-        return null;
-    }
-
-    private void CompleteTextItem(
-        AvaloniaEdit.Editing.TextArea textArea,
-        AvaloniaEdit.Document.ISegment segment,
-        string completionText,
-        EventArgs insertionRequest)
-    {
-        var commitCharacter = PrepareCompletionCommit(insertionRequest);
-        textArea.Document.Replace(segment.Offset, segment.Length, completionText);
-        textArea.Caret.Offset = segment.Offset + completionText.Length;
-        if (commitCharacter is char character)
-        {
-            textArea.Document.Insert(textArea.Caret.Offset, character.ToString());
-            textArea.Caret.Offset++;
-        }
-    }
-
-    private void EditorTextView_PointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (sender is not AvaloniaEdit.Rendering.TextView textView || Editor.Document is null) return;
-        var position = textView.GetPosition(e.GetPosition(textView));
-        if (position is null)
-        {
-            ClearQuickInfo();
-            return;
-        }
-
-        var offset = Editor.Document.GetOffset(position.Value.Location);
-        var source = Editor.Text ?? string.Empty;
-        if (offset >= source.Length || !IsIdentifierPart(source[offset])) offset--;
-        if (offset < 0 || !IsIdentifierPart(source[offset]))
-        {
-            ClearQuickInfo();
-            return;
-        }
-
-        if (_hoverOffset == offset) return;
-        _hoverOffset = offset;
-        ToolTip.SetTip(Editor, null);
-        _quickInfoTimer.Stop();
-        _quickInfoTimer.Start();
-    }
-
-    private void EditorTextView_PointerExited(object? sender, PointerEventArgs e) => ClearQuickInfo();
-
-    private void ClearQuickInfo()
-    {
-        _hoverOffset = -1;
-        _quickInfoTimer.Stop();
-        _quickInfoCts?.Cancel();
-        ToolTip.SetTip(Editor, null);
-    }
-
-    private async Task ShowQuickInfoAsync()
-    {
-        _quickInfoTimer.Stop();
-        var document = _activeDocument;
-        var offset = _hoverOffset;
-        var projectPath = document is null ? null : FindProjectForFile(document.FullPath);
-        if (document is null || projectPath is null || offset < 0) return;
-
-        _quickInfoCts?.Cancel();
-        var request = new CancellationTokenSource();
-        _quickInfoCts = request;
-        var source = Editor.Text ?? string.Empty;
-        try
-        {
-            var info = await _completionService.GetQuickInfoAsync(projectPath, document.FullPath, source, offset, request.Token);
-            if (request.IsCancellationRequested || !ReferenceEquals(_activeDocument, document) ||
-                !string.Equals(Editor.Text, source, StringComparison.Ordinal) || _hoverOffset != offset)
-                return;
-            ToolTip.SetTip(Editor, info);
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"C# quick info unavailable: {ex.Message}"); }
-        finally
-        {
-            if (ReferenceEquals(_quickInfoCts, request)) _quickInfoCts = null;
-            request.Dispose();
-        }
-    }
-
-    private async Task ShowAddUsingActionsAsync()
-    {
-        var document = _activeDocument;
-        if (document is null) return;
-        var projectPath = FindProjectForFile(document.FullPath);
-        if (projectPath is null)
-        {
-            StatusText.Text = "Open this file in a C# project to find using suggestions";
-            return;
-        }
-
-        var source = Editor.Text ?? string.Empty;
-        var caretOffset = Editor.CaretOffset;
-        try
-        {
-            var suggestions = await _completionService.GetMissingUsingSuggestionsAsync(
-                projectPath, document.FullPath, source, caretOffset, CancellationToken.None);
-            if (!ReferenceEquals(_activeDocument, document) || !string.Equals(Editor.Text, source, StringComparison.Ordinal)) return;
-            if (suggestions.Count == 0)
-            {
-                StatusText.Text = "No matching using directive found";
-                return;
-            }
-            if (suggestions.Count == 1)
-            {
-                await ApplyUsingAsync(document, source, suggestions[0], caretOffset);
-                return;
-            }
-
-            var menu = new ContextMenu { Placement = PlacementMode.Pointer };
-            foreach (var suggestion in suggestions)
-            {
-                var item = new MenuItem { Header = $"using {suggestion};" };
-                item.Click += async (_, _) => await ApplyUsingAsync(document, source, suggestion, caretOffset);
-                menu.Items.Add(item);
-            }
-            Editor.ContextMenu = menu;
-            menu.Open(Editor);
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Unable to find using suggestions: {ex.Message}");
-            StatusText.Text = "Quick action failed";
-        }
-    }
-
-    private async Task ApplyUsingAsync(EditorDocument document, string source, string namespaceName, int caretOffset)
-    {
-        var projectPath = FindProjectForFile(document.FullPath);
-        if (projectPath is null) return;
-        try
-        {
-            var updatedSource = await _completionService.AddUsingAsync(
-                projectPath, document.FullPath, source, namespaceName, CancellationToken.None);
-            if (updatedSource is null || !ReferenceEquals(_activeDocument, document) ||
-                !string.Equals(Editor.Text, source, StringComparison.Ordinal)) return;
-
-            var offsetAdjustment = updatedSource.Length - source.Length;
-            Editor.Document.Replace(0, Editor.Document.TextLength, updatedSource);
-            Editor.CaretOffset = Math.Clamp(caretOffset + offsetAdjustment, 0, Editor.Document.TextLength);
-            Editor.Focus();
-            StatusText.Text = $"Added using {namespaceName}";
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Unable to add using {namespaceName}: {ex.Message}");
-            StatusText.Text = "Quick action failed";
-        }
-    }
-
-    private async Task ShowCompletionAsync(char? triggerCharacter, bool explicitInvocation)
-    {
-        if (_activeDocument is null || _completionWindow is not null ||
-            !Path.GetExtension(_activeDocument.FullPath).Equals(".cs", StringComparison.OrdinalIgnoreCase))
-            return;
-
-        _completionRequestCts?.Cancel();
-        _completionRequestCts?.Dispose();
-        var requestCts = new CancellationTokenSource();
-        _completionRequestCts = requestCts;
-
-        var activeDocument = _activeDocument;
-        var source = Editor.Text ?? string.Empty;
-        var caretOffset = Editor.CaretOffset;
-        var startOffset = triggerCharacter == '.' ? caretOffset : GetIdentifierStart(source, caretOffset);
-        var projectPath = FindProjectForFile(activeDocument.FullPath);
-        var semanticItems = Array.Empty<CSharpCompletionCandidate>();
-        string? expectedTypeName = null;
-
-        try
-        {
-            if (!explicitInvocation && triggerCharacter != '.')
-                await Task.Delay(90, requestCts.Token);
-
-            if (projectPath is not null)
-            {
-                semanticItems = (await _completionService.GetSuggestionsAsync(
-                    projectPath,
-                    activeDocument.FullPath,
-                    source,
-                    caretOffset,
-                    triggerCharacter,
-                    requestCts.Token)).ToArray();
-                var leftOfCaret = source[..Math.Clamp(caretOffset, 0, source.Length)].TrimEnd();
-                if (leftOfCaret.EndsWith('='))
-                    expectedTypeName = await _completionService.GetExpectedTypeNameAsync(
-                        projectPath,
-                        activeDocument.FullPath,
-                        source,
-                        caretOffset,
-                        requestCts.Token);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"C# completion unavailable: {ex.Message}");
-        }
-
-        if (requestCts.IsCancellationRequested) return;
-        Dispatcher.UIThread.Post(() =>
-        {
-            try
-            {
-            if (!ReferenceEquals(_activeDocument, activeDocument) || Editor.Text != source ||
-                requestCts.IsCancellationRequested || _completionWindow is not null)
-                return;
-
-            var prefix = source[startOffset..caretOffset];
-            var matchingSemanticItems = semanticItems
-                .Where(item => MatchesCompletionPrefix(item.FilterText, prefix))
-                .ToArray();
-            var useWordFallback = matchingSemanticItems.Length == 0 &&
-                                  (semanticItems.Length == 0 || explicitInvocation) &&
-                                  (explicitInvocation || (triggerCharacter != '.' && prefix.Length > 0));
-            if (matchingSemanticItems.Length == 0 && !useWordFallback) return;
-
-            var completionWindow = new CompletionWindow(Editor.TextArea)
-            {
-                StartOffset = startOffset,
-                EndOffset = caretOffset,
-                CloseAutomatically = true,
-                CloseWhenCaretAtBeginning = triggerCharacter != '.'
-            };
-            completionWindow.CompletionList.CompletionAcceptKeys = [Key.Enter, Key.Tab, Key.OemPeriod, Key.Decimal];
-
-            if (matchingSemanticItems.Length > 0)
-            {
-                var insertionRequested = false;
-                ICompletionData? preferredItem = null;
-                foreach (var semanticItem in matchingSemanticItems)
-                {
-                    var item = semanticItem;
-                    var completionItem = new EditorCompletionItem(
-                        item.DisplayText,
-                        item.Description,
-                        (textArea, segment, insertionEventArgs) =>
-                        {
-                            if (insertionRequested) return;
-                            insertionRequested = true;
-                            var commitCharacter = PrepareCompletionCommit(insertionEventArgs);
-                            _ = ApplySemanticCompletionAsync(item, textArea, segment, commitCharacter);
-                        });
-                    completionWindow.CompletionList.CompletionData.Add(completionItem);
-                    if (expectedTypeName is not null &&
-                        (string.Equals(item.FilterText, expectedTypeName, StringComparison.Ordinal) ||
-                         string.Equals(item.DisplayText, expectedTypeName, StringComparison.Ordinal)))
-                        preferredItem = completionItem;
-                }
-                if (expectedTypeName is not null && preferredItem is null)
-                {
-                    preferredItem = new EditorCompletionItem(
-                        expectedTypeName,
-                        "Expected type for this expression",
-                        (textArea, segment, insertionEventArgs) =>
-                        {
-                            if (insertionRequested) return;
-                            insertionRequested = true;
-                            CompleteTextItem(textArea, segment, expectedTypeName, insertionEventArgs);
-                        });
-                    completionWindow.CompletionList.CompletionData.Add(preferredItem);
-                }
-                completionWindow.CompletionList.SelectedItem = preferredItem ?? completionWindow.CompletionList.CompletionData.FirstOrDefault();
-            }
-            else
-            {
-                var insertionRequested = false;
-                foreach (var word in GetWordSuggestions(source, startOffset, caretOffset))
-                {
-                    var completionText = word;
-                    completionWindow.CompletionList.CompletionData.Add(new EditorCompletionItem(
-                        completionText,
-                        "Word from open documents",
-                        (textArea, segment, insertionEventArgs) =>
-                        {
-                            if (insertionRequested) return;
-                            insertionRequested = true;
-                            CompleteTextItem(textArea, segment, completionText, insertionEventArgs);
-                        }));
-                }
-                if (expectedTypeName is not null)
-                {
-                    var expectedTypeItem = new EditorCompletionItem(
-                        expectedTypeName,
-                        "Expected type for this expression",
-                        (textArea, segment, insertionEventArgs) =>
-                        {
-                            if (insertionRequested) return;
-                            insertionRequested = true;
-                            CompleteTextItem(textArea, segment, expectedTypeName, insertionEventArgs);
-                        });
-                    completionWindow.CompletionList.CompletionData.Insert(0, expectedTypeItem);
-                    completionWindow.CompletionList.SelectedItem = expectedTypeItem;
-                }
-                else if (completionWindow.CompletionList.CompletionData.Count > 0)
-                    completionWindow.CompletionList.SelectedItem = completionWindow.CompletionList.CompletionData[0];
-            }
-
-            if (completionWindow.CompletionList.CompletionData.Count == 0) return;
-            _completionWindow = completionWindow;
-            completionWindow.Closed += (_, _) =>
-            {
-                if (ReferenceEquals(_completionWindow, completionWindow)) _completionWindow = null;
-            };
-            completionWindow.Show();
-            }
-            catch (Exception ex)
-            {
-                _completionWindow?.Hide();
-                _completionWindow = null;
-                AppendOutput($"Unable to show completion: {ex.Message}");
-            }
-        });
-    }
-
-    private async Task ApplySemanticCompletionAsync(
-        CSharpCompletionCandidate candidate,
-        AvaloniaEdit.Editing.TextArea textArea,
-        AvaloniaEdit.Document.ISegment segment,
-        char? commitCharacter)
-    {
-        try
-        {
-            var change = await candidate.CompletionService.GetChangeAsync(
-                candidate.Document,
-                candidate.Item,
-                cancellationToken: CancellationToken.None);
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_activeDocument?.FullPath != candidate.Document.FilePath ||
-                    Editor.Text != candidate.SourceSnapshot)
-                    return;
-
-                try
-                {
-                    foreach (var textChange in change.TextChanges.OrderByDescending(item => item.Span.Start))
-                        textArea.Document.Replace(textChange.Span.Start, textChange.Span.Length, textChange.NewText ?? string.Empty);
-
-                    textArea.Caret.Offset = change.NewPosition ?? (segment.Offset + candidate.DisplayText.Length);
-                    if (commitCharacter is char character)
-                    {
-                        textArea.Document.Insert(textArea.Caret.Offset, character.ToString());
-                        textArea.Caret.Offset++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    AppendOutput($"Unable to apply completion: {ex.Message}");
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            AppendOutput($"Unable to apply completion: {ex.Message}");
-        }
-    }
-
-    private IEnumerable<string> GetWordSuggestions(string source, int prefixStart, int caretOffset)
-    {
-        var prefix = source[prefixStart..Math.Clamp(caretOffset, prefixStart, source.Length)];
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var documentText in _documents.Select(document => document.Text).Append(source))
-        {
-            var position = 0;
-            while (position < documentText.Length)
-            {
-                if (!IsIdentifierStart(documentText[position]))
-                {
-                    position++;
-                    continue;
-                }
-
-                var start = position++;
-                while (position < documentText.Length && IsIdentifierPart(documentText[position])) position++;
-                var word = documentText[start..position];
-                if (word.Length > prefix.Length && word.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && seen.Add(word))
-                    yield return word;
-            }
-        }
-    }
-
-    private static bool MatchesCompletionPrefix(string candidate, string prefix)
-    {
-        if (prefix.Length == 0 || candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var initials = new string(candidate.Where(char.IsUpper).ToArray());
-        return initials.Length > 0 && initials.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int GetIdentifierStart(string source, int position)
-    {
-        var start = Math.Clamp(position, 0, source.Length);
-        while (start > 0 && IsIdentifierPart(source[start - 1])) start--;
-        return start;
-    }
-
-    private static bool IsIdentifierStart(char character) => character == '_' || char.IsLetter(character);
-
-    private static bool IsIdentifierPart(char character) => character == '_' || char.IsLetterOrDigit(character);
-
     private void Search_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter || string.IsNullOrWhiteSpace(SearchBox.Text)) return;
@@ -1716,7 +918,7 @@ public sealed partial class MainWindow : Window
             node.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
         if (match is null)
         {
-            StatusText.Text = $"No file matching '{query}'";
+            OutputPanel.StatusMessage = $"No file matching '{query}'";
             return;
         }
 
@@ -1724,11 +926,7 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void AppendOutput(string line) => Dispatcher.UIThread.Post(() =>
-    {
-        Output.Text = (Output.Text ?? string.Empty) + line + Environment.NewLine;
-        Output.CaretIndex = Output.Text.Length;
-    });
+    private void AppendOutput(string line) => Dispatcher.UIThread.Post(() => OutputPanel.AppendOutput(line));
 
     private void UpdateDiagnostics()
     {
@@ -1736,201 +934,17 @@ public sealed partial class MainWindow : Window
         DiagnosticsText.Text = $"RAM {process.WorkingSet64 / 1024 / 1024:N0} MB";
     }
 
-    private void UpdateSyntaxDiagnostics()
-    {
-        var document = _activeDocument;
-        if (document is null || !Path.GetExtension(document.FullPath).Equals(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            _problems.Clear();
-            _syntaxErrorRenderer.SetErrors([]);
-            _semanticColorizer.SetHighlights([]);
-            ProblemsTabButton.Content = "PROBLEMS";
-            EditorStatusText.Text = "✓  Ready";
-            return;
-        }
-
-        var source = Editor.Text ?? string.Empty;
-        var tree = CSharpSyntaxTree.ParseText(
-            source,
-            new CSharpParseOptions(LanguageVersion.Preview),
-            document.FullPath);
-        var parseDiagnostics = tree.GetDiagnostics().ToArray();
-        DisplayDiagnostics(parseDiagnostics);
-        _ = UpdateSemanticDiagnosticsAsync(document, source, parseDiagnostics);
-    }
-
-    private void DisplayDiagnostics(IEnumerable<Microsoft.CodeAnalysis.Diagnostic> diagnostics)
-    {
-        var visibleDiagnostics = diagnostics
-            .Where(item => item.Location.IsInSource &&
-                           item.Severity is Microsoft.CodeAnalysis.DiagnosticSeverity.Error or Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
-            .DistinctBy(item => (item.Id, item.Location.SourceSpan.Start, item.Location.SourceSpan.Length))
-            .OrderBy(item => item.Location.SourceSpan.Start)
-            .ToArray();
-        _problems.Clear();
-        foreach (var diagnostic in visibleDiagnostics)
-        {
-            var span = diagnostic.Location.GetLineSpan();
-            var line = span.StartLinePosition.Line + 1;
-            var column = span.StartLinePosition.Character + 1;
-            _problems.Add(new EditorProblem(
-                diagnostic.Severity,
-                line,
-                column,
-                diagnostic.GetMessage()));
-        }
-        _syntaxErrorRenderer.SetErrors(visibleDiagnostics
-            .Where(item => item.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error && item.Location.IsInSource)
-            .Select(item => (item.Location.SourceSpan.Start, item.Location.SourceSpan.Length)));
-
-        var errors = _problems.Count(problem => problem.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
-        var warnings = _problems.Count - errors;
-        EditorStatusText.Text = errors > 0
-            ? $"✖  {errors} error(s), {warnings} warning(s)"
-            : warnings > 0 ? $"⚠  {warnings} warning(s)" : "✓  No syntax errors";
-        ProblemsTabButton.Content = errors + warnings > 0 ? $"PROBLEMS ({_problems.Count})" : "PROBLEMS";
-    }
-
-    private async Task UpdateSemanticDiagnosticsAsync(
-        EditorDocument document,
-        string source,
-        IReadOnlyList<Microsoft.CodeAnalysis.Diagnostic> parseDiagnostics)
-    {
-        _semanticDiagnosticsCts?.Cancel();
-        _semanticDiagnosticsCts?.Dispose();
-        var request = new CancellationTokenSource();
-        _semanticDiagnosticsCts = request;
-
-        var projectPath = FindProjectForFile(document.FullPath);
-        if (projectPath is null)
-        {
-            _semanticColorizer.SetHighlights([]);
-            return;
-        }
-        try
-        {
-            var diagnostics = await _completionService.GetDiagnosticsAsync(
-                projectPath,
-                document.FullPath,
-                source,
-                request.Token);
-            var semanticHighlights = await _completionService.GetSemanticHighlightsAsync(
-                projectPath,
-                document.FullPath,
-                source,
-                request.Token);
-            if (request.IsCancellationRequested || !ReferenceEquals(_activeDocument, document) ||
-                !string.Equals(Editor.Text, source, StringComparison.Ordinal)) return;
-
-            _semanticColorizer.SetHighlights(semanticHighlights);
-            _lastSemanticDiagnosticsFailure = null;
-            DisplayDiagnostics(diagnostics.Count > 0 ? diagnostics : parseDiagnostics);
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine($"Live C# diagnostics unavailable: {ex.Message}");
-            var failure = ex.GetBaseException().Message;
-            if (!string.Equals(_lastSemanticDiagnosticsFailure, failure, StringComparison.Ordinal))
-            {
-                _lastSemanticDiagnosticsFailure = failure;
-                AppendOutput($"Live C# semantic highlighting unavailable: {failure}");
-            }
-        }
-    }
-
-    private string? FindProjectForFile(string filePath)
-    {
-        var candidates = _projects
-            .Select(project => new { Project = project, Directory = Path.GetDirectoryName(project.FullPath) })
-            .Where(item => item.Directory is not null && IsPathInside(item.Directory, filePath))
-            .OrderByDescending(item => item.Directory!.Length);
-        return candidates.FirstOrDefault()?.Project.FullPath;
-    }
-
-    private static bool IsPathInside(string directory, string filePath)
-    {
-        var relative = Path.GetRelativePath(directory, filePath);
-        return !Path.IsPathRooted(relative) && relative != ".." &&
-               !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
-    }
-
-    private void UpdateCursorStatus()
-    {
-        var caret = Editor.TextArea.Caret;
-        CursorStatusText.Text = $"Ln {caret.Line}, Col {caret.Column}";
-    }
-
     private void ActivateDocument(EditorDocument? document)
     {
-        _completionRequestCts?.Cancel();
-        ClearQuickInfo();
-        _completionWindow?.Hide();
-        _completionWindow = null;
-        _semanticColorizer.SetHighlights([]);
         foreach (var item in _documents) item.IsActive = ReferenceEquals(item, document);
         _activeDocument = document;
-        _loadingDocument = true;
-        Editor.Text = document?.Text ?? string.Empty;
-        Editor.SyntaxHighlighting = EditorHighlightingService.ForFile(document?.FullPath);
-        // SyntaxHighlighting registers its colorizer after document activation. Keep
-        // semantic colors last so they override lexical colors for the same spans.
-        Editor.TextArea.TextView.LineTransformers.Remove(_semanticColorizer);
-        Editor.TextArea.TextView.LineTransformers.Add(_semanticColorizer);
-        Editor.TextArea.TextView.Redraw();
-        _loadingDocument = false;
+        _editorWorkspaceController.SetActiveDocument(document);
         SyncSolutionExplorerToActiveDocument();
-        EmptyEditorText.IsVisible = document is null;
-        _syntaxDiagnosticsTimer.Stop();
-        UpdateSyntaxDiagnostics();
-        UpdateCursorStatus();
-        if (document is not null) Editor.Focus();
     }
-
     private void SyncSolutionExplorerToActiveDocument()
     {
-        if (_activeDocument is null) return;
-        var branch = new List<FileNode>();
-        if (!TryFindNode(_roots, _activeDocument.FullPath, branch)) return;
-
-        foreach (var ancestor in branch.Take(branch.Count - 1))
-            ancestor.IsExpanded = true;
-
-        var selectedNode = branch[^1];
-        FileTree.SelectedItem = selectedNode;
-        Dispatcher.UIThread.Post(() =>
-        {
-            FileTree.UpdateLayout();
-            FindTreeItemContainer(FileTree, selectedNode)?.BringIntoView();
-        });
+        if (_activeDocument is not null) SolutionExplorerPanel.SelectAndReveal(_activeDocument.FullPath);
     }
-
-    private static bool TryFindNode(IEnumerable<FileNode> nodes, string fullPath, List<FileNode> branch)
-    {
-        foreach (var node in nodes)
-        {
-            branch.Add(node);
-            if (string.Equals(node.FullPath, fullPath, StringComparison.OrdinalIgnoreCase) ||
-                TryFindNode(node.Children, fullPath, branch))
-                return true;
-            branch.RemoveAt(branch.Count - 1);
-        }
-        return false;
-    }
-
-    private static TreeViewItem? FindTreeItemContainer(ItemsControl owner, FileNode target)
-    {
-        foreach (var item in owner.Items.OfType<FileNode>())
-        {
-            if (owner.ContainerFromItem(item) is not TreeViewItem container)
-                continue;
-            if (ReferenceEquals(item, target)) return container;
-            var nested = FindTreeItemContainer(container, target);
-            if (nested is not null) return nested;
-        }
-        return null;
-    }
-
     private void AddProjects(FileNode node)
     {
         if (Path.GetExtension(node.Name).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
@@ -1946,9 +960,4 @@ public sealed partial class MainWindow : Window
             foreach (var child in Flatten(node.Children)) yield return child;
         }
     }
-}
-
-public sealed record EditorProblem(Microsoft.CodeAnalysis.DiagnosticSeverity Severity, int Line, int Column, string Message)
-{
-    public string DisplayText => $"{Severity}  {Message}   [{Line}, {Column}]";
 }
