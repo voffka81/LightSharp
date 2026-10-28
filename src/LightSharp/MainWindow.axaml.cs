@@ -36,6 +36,7 @@ public sealed partial class MainWindow : Window
     private Tool? _gitChangesTool;
     private EditorDocument? _activeDocument;
     private bool _loadingDocument;
+    private bool _gitOperationRunning;
     private CancellationTokenSource? _commandCts;
     private CancellationTokenSource? _completionRequestCts;
     private CancellationTokenSource? _semanticDiagnosticsCts;
@@ -672,6 +673,7 @@ public sealed partial class MainWindow : Window
         InitializeGitMenuItem.IsVisible = _workspacePath is not null && !hasRepository;
         StageAllGitMenuItem.IsVisible = hasRepository;
         CommitGitMenuItem.IsVisible = hasRepository;
+        SetGitOperationButtonsEnabled(hasRepository && !_gitOperationRunning);
 
         if (!hasRepository)
         {
@@ -756,6 +758,51 @@ public sealed partial class MainWindow : Window
             AppendOutput($"Git commit failed: {ex.Message}");
             StatusText.Text = "Git commit failed";
         }
+    }
+
+    private async void FetchGit_Click(object? sender, RoutedEventArgs e) =>
+        await RunGitRemoteOperationAsync("fetch", _git.FetchAsync);
+
+    private async void PullGit_Click(object? sender, RoutedEventArgs e) =>
+        await RunGitRemoteOperationAsync("pull", _git.PullAsync);
+
+    private async void PushGit_Click(object? sender, RoutedEventArgs e) =>
+        await RunGitRemoteOperationAsync("push", _git.PushAsync);
+
+    private async Task RunGitRemoteOperationAsync(string operation, Func<string, CancellationToken, Task<string>> run)
+    {
+        if (_gitRepositoryPath is null || _gitOperationRunning) return;
+
+        var repositoryPath = _gitRepositoryPath;
+        _gitOperationRunning = true;
+        SetGitOperationButtonsEnabled(false);
+        StatusText.Text = $"Git {operation} in progress...";
+        try
+        {
+            var output = await run(repositoryPath, CancellationToken.None);
+            if (!string.IsNullOrWhiteSpace(output)) AppendOutput(output);
+            await RefreshGitStatusAsync();
+            StatusText.Text = $"Git {operation} completed";
+        }
+        catch (Exception ex)
+        {
+            AppendOutput($"Git {operation} failed: {ex.Message}");
+            StatusText.Text = $"Git {operation} failed";
+        }
+        finally
+        {
+            _gitOperationRunning = false;
+            SetGitOperationButtonsEnabled(_gitRepositoryPath is not null);
+        }
+    }
+
+    private void SetGitOperationButtonsEnabled(bool enabled)
+    {
+        GitRefreshButton.IsEnabled = enabled;
+        GitStageAllButton.IsEnabled = enabled;
+        GitFetchButton.IsEnabled = enabled;
+        GitPullButton.IsEnabled = enabled;
+        GitPushButton.IsEnabled = enabled;
     }
 
     private void Problem_DoubleTapped(object? sender, TappedEventArgs e)

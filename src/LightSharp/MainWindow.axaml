@@ -64,11 +64,20 @@
       </Border>
       <Border x:Name="GitChangesPanel" Grid.Column="1" Background="{DynamicResource BrushPanelSurface}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,1,0">
         <Grid x:Name="GitChangesContent" Background="{DynamicResource BrushPanelSurface}" RowDefinitions="Auto,*,Auto">
-          <StackPanel Orientation="Horizontal" Margin="8,5" Spacing="6"><TextBlock x:Name="GitRepositoryText" Foreground="{DynamicResource BrushTextMuted7}" FontSize="11" VerticalAlignment="Center"/><Button Classes="chrome" Content="Refresh" Click="RefreshGit_Click" Padding="8,3"/><Button Classes="chrome" Content="Stage All" Click="StageAllGit_Click" Padding="8,3"/></StackPanel>
+          <Grid Margin="8,5" RowDefinitions="Auto,Auto" RowSpacing="4">
+            <TextBlock x:Name="GitRepositoryText" Foreground="{DynamicResource BrushTextMuted7}" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <WrapPanel Grid.Row="1" Orientation="Horizontal">
+              <Button x:Name="GitRefreshButton" Classes="chrome" Content="Refresh" Click="RefreshGit_Click" Padding="8,3" Margin="0,0,5,3"/>
+              <Button x:Name="GitStageAllButton" Classes="chrome" Content="Stage All" Click="StageAllGit_Click" Padding="8,3" Margin="0,0,5,3"/>
+              <Button x:Name="GitFetchButton" Classes="chrome" Content="Fetch" Click="FetchGit_Click" Padding="8,3" Margin="0,0,5,3"/>
+              <Button x:Name="GitPullButton" Classes="chrome" Content="Pull" Click="PullGit_Click" Padding="8,3" Margin="0,0,5,3"/>
+              <Button x:Name="GitPushButton" Classes="chrome" Content="Push" Click="PushGit_Click" Padding="8,3" Margin="0,0,5,3"/>
+            </WrapPanel>
+          </Grid>
           <Grid Grid.Row="1"><ListBox x:Name="GitChangesList" Background="{DynamicResource BrushInsetSurface}">
               <ListBox.ItemTemplate><DataTemplate x:DataType="services:GitChange"><TextBlock Text="{Binding DisplayText}" FontFamily="Cascadia Code,Consolas,monospace" FontSize="11" Foreground="{DynamicResource BrushTextPrimary}" Margin="7,2"/></DataTemplate></ListBox.ItemTemplate>
             </ListBox><TextBlock x:Name="GitEmptyText" Text="No changes detected." Foreground="{DynamicResource BrushTextMuted4}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/></Grid>
-          <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="8,4" ColumnSpacing="8"><TextBox x:Name="GitCommitMessageBox" PlaceholderText="Commit message"/><Button Classes="launch" Content="Commit All" Click="CommitGit_Click"/></Grid>
+          <Grid Grid.Row="2" RowDefinitions="Auto,Auto" Margin="8,4" RowSpacing="6"><TextBox x:Name="GitCommitMessageBox" Grid.Row="0" PlaceholderText="Commit message"/><Button Grid.Row="1" HorizontalAlignment="Right" Classes="launch" Content="Commit All" Click="CommitGit_Click"/></Grid>
         </Grid>
       </Border>
       <Border Grid.Column="2" Background="{DynamicResource BrushBorder}"/>
