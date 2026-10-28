@@ -85,7 +85,7 @@ public sealed partial class MainWindow : Window
         using (var iconStream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://LightSharp/Assets/LightSharp.png")))
             Icon = new WindowIcon(iconStream);
         _syntaxErrorRenderer = new SyntaxErrorRenderer(Editor);
-        _semanticColorizer = new SemanticColorizingTransformer();
+        _semanticColorizer = new SemanticColorizingTransformer(Editor.TextArea.TextView);
         Editor.TextArea.TextView.LineTransformers.Add(_semanticColorizer);
         Editor.Options.IndentationSize = 4;
         Editor.Options.ConvertTabsToSpaces = true;
