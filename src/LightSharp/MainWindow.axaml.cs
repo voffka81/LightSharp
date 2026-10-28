@@ -52,6 +52,8 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        using (var iconStream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://LightSharp/Assets/LightSharp.png")))
+            Icon = new WindowIcon(iconStream);
         _syntaxErrorRenderer = new SyntaxErrorRenderer(Editor);
         _semanticColorizer = new SemanticColorizingTransformer();
         Editor.TextArea.TextView.LineTransformers.Add(_semanticColorizer);
@@ -303,6 +305,7 @@ public sealed partial class MainWindow : Window
             _roots.Add(root);
         }
         StartupProjectSelector.SelectedItem = _projects.FirstOrDefault();
+        SyncSolutionExplorerToActiveDocument();
         StatusText.Text = "Ready";
         await RefreshGitStatusAsync();
     }
@@ -1641,11 +1644,56 @@ public sealed partial class MainWindow : Window
         Editor.SyntaxHighlighting = EditorHighlightingService.ForFile(document?.FullPath);
         Editor.Text = document?.Text ?? string.Empty;
         _loadingDocument = false;
+        SyncSolutionExplorerToActiveDocument();
         EmptyEditorText.IsVisible = document is null;
         _syntaxDiagnosticsTimer.Stop();
         UpdateSyntaxDiagnostics();
         UpdateCursorStatus();
         if (document is not null) Editor.Focus();
+    }
+
+    private void SyncSolutionExplorerToActiveDocument()
+    {
+        if (_activeDocument is null) return;
+        var branch = new List<FileNode>();
+        if (!TryFindNode(_roots, _activeDocument.FullPath, branch)) return;
+
+        foreach (var ancestor in branch.Take(branch.Count - 1))
+            ancestor.IsExpanded = true;
+
+        var selectedNode = branch[^1];
+        FileTree.SelectedItem = selectedNode;
+        Dispatcher.UIThread.Post(() =>
+        {
+            FileTree.UpdateLayout();
+            FindTreeItemContainer(FileTree, selectedNode)?.BringIntoView();
+        });
+    }
+
+    private static bool TryFindNode(IEnumerable<FileNode> nodes, string fullPath, List<FileNode> branch)
+    {
+        foreach (var node in nodes)
+        {
+            branch.Add(node);
+            if (string.Equals(node.FullPath, fullPath, StringComparison.OrdinalIgnoreCase) ||
+                TryFindNode(node.Children, fullPath, branch))
+                return true;
+            branch.RemoveAt(branch.Count - 1);
+        }
+        return false;
+    }
+
+    private static TreeViewItem? FindTreeItemContainer(ItemsControl owner, FileNode target)
+    {
+        foreach (var item in owner.Items.OfType<FileNode>())
+        {
+            if (owner.ContainerFromItem(item) is not TreeViewItem container)
+                continue;
+            if (ReferenceEquals(item, target)) return container;
+            var nested = FindTreeItemContainer(container, target);
+            if (nested is not null) return nested;
+        }
+        return null;
     }
 
     private void AddProjects(FileNode node)
