@@ -52,4 +52,31 @@ public sealed class KeyBindingTests
         }
         finally { File.Delete(path); }
     }
+    [Fact]
+    public void MultipleShortcutsForOneCommandWorkImmediatelyAndPersist()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            var bindings = new KeyBindingService(path);
+            Assert.True(bindings.TrySetBindings(InputCommand.Save, ["Ctrl+S", "Ctrl+Alt+S"], out var error), error);
+            var handler = new InputHandlerService(bindings);
+            Assert.Equal(InputCommand.Save, handler.HandleWindowKeyDown(Key.S, KeyModifiers.Control).Command);
+            Assert.Equal(InputCommand.Save, handler.HandleWindowKeyDown(Key.S, KeyModifiers.Control | KeyModifiers.Alt).Command);
+            var reloaded = new InputHandlerService(new KeyBindingService(path));
+            Assert.Equal(InputCommand.Save, reloaded.HandleWindowKeyDown(Key.S, KeyModifiers.Control | KeyModifiers.Alt).Command);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void ConflictingShortcutIsRejectedWithoutChangingExistingBindings()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        var bindings = new KeyBindingService(path);
+        Assert.False(bindings.TrySetBindings(InputCommand.Save, ["Ctrl+F"], out var error));
+        Assert.Contains("Find", error);
+        Assert.Equal(InputCommand.Save, new InputHandlerService(bindings).HandleWindowKeyDown(Key.S, KeyModifiers.Control).Command);
+    }
+
 }
