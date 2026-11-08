@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window
     private DotNetCommandController _dotNetCommandController = null!;
     private WorkspaceMenuController _workspaceMenuController = null!;
     private MainWindowMenuController _menuController = null!;
+    private readonly KeyBindingService _keyBindings = new();
     private readonly List<IDisposable> _messageSubscriptions = [];
     private ToolDock? _solutionExplorerDock;
     private Tool? _gitChangesTool;
@@ -61,10 +62,11 @@ public sealed partial class MainWindow : Window
             OutputPanel, () => MainToolbar.SelectedStartupProject, MainToolbar.SetStartupProject);
         _menuController = new MainWindowMenuController(
             _messageBus, _editorWorkspaceController, _searchController, _gitChangesController,
-            OutputPanel, new InputHandlerService(), _workspaceMenuController, _dotNetCommandController,
+            OutputPanel, new InputHandlerService(_keyBindings), _workspaceMenuController, _dotNetCommandController,
             RefreshGitStatusAsync,
             _solutionExplorerDock!, _gitChangesTool!);
         MainMenu.AttachController(_menuController, _messageBus, this);
+        MainMenu.OpenKeybindingsRequested += () => new KeybindingsWindow(_keyBindings).ShowDialog(this);
         MainToolbar.AttachController(_menuController);
         _propertiesPanelController = new PropertiesPanelController(
             _messageBus, () => _menuController.OpenFolderAsync(), () => _menuController.BuildAsync());
