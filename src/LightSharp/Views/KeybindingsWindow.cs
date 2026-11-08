@@ -17,6 +17,7 @@ public sealed class KeybindingsWindow : Window
     private readonly Button _capture = new() { Content = "Record shortcut" };
     private string? _firstStroke;
     private bool _recording;
+    private bool _appendShortcut;
 
     public KeybindingsWindow(KeyBindingService bindings)
     {
@@ -34,16 +35,11 @@ public sealed class KeybindingsWindow : Window
         Grid.SetRow(_current, 2);
         root.Children.Add(_current);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        _capture.Click += (_, _) =>
-        {
-            if (_commands.SelectedItem is not InputCommand) return;
-            _recording = true;
-            _firstStroke = null;
-            _capture.Content = "Press shortcut (Esc to cancel)";
-            _message.Text = "Press a shortcut, or a chord prefix followed by its second key.";
-            Focus();
-        };
+        _capture.Click += (_, _) => BeginRecording(false);
         actions.Children.Add(_capture);
+        var add = new Button { Content = "Add alternative" };
+        add.Click += (_, _) => BeginRecording(true);
+        actions.Children.Add(add);
         var remove = new Button { Content = "Unassign" };
         remove.Click += (_, _) => Apply([]);
         actions.Children.Add(remove);
@@ -117,8 +113,25 @@ public sealed class KeybindingsWindow : Window
             _message.Text = "Press the second key...";
             return;
         }
-        Apply([_firstStroke is null ? stroke : _firstStroke + " " + stroke]);
+        var gesture = _firstStroke is null ? stroke : _firstStroke + " " + stroke;
+        if (_appendShortcut && _commands.SelectedItem is InputCommand command)
+        {
+            var existing = _bindings.GetBindings().GetValueOrDefault(command.ToString(), []);
+            Apply([.. existing, gesture]);
+        }
+        else Apply([gesture]);
         FinishRecording();
+    }
+
+    private void BeginRecording(bool append)
+    {
+        if (_commands.SelectedItem is not InputCommand) return;
+        _appendShortcut = append;
+        _recording = true;
+        _firstStroke = null;
+        _capture.Content = "Press shortcut (Esc to cancel)";
+        _message.Text = "Press a shortcut, or Ctrl+K / Ctrl+R followed by a second key.";
+        Focus();
     }
 
     private void FinishRecording()
