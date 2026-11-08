@@ -15,7 +15,7 @@ public static class NavigationSymbolSearch
     {
         if (limit <= 0) return [];
         var term = (query ?? string.Empty).Trim();
-        if (term.Length == 0) return [];
+        // Empty query returns all declarations for the interactive symbol picker.
         var matches = new List<Match>();
         foreach (var (path, source) in documents)
         {
@@ -34,7 +34,7 @@ public static class NavigationSymbolSearch
                     EventDeclarationSyntax ev => (ev.Identifier.ValueText, "Event", ev.Identifier.GetLocation()),
                     _ => (null, null, null)
                 };
-                if (name is null || !name.Contains(term, StringComparison.OrdinalIgnoreCase)) continue;
+                if (name is null || (term.Length > 0 && !name.Contains(term, StringComparison.OrdinalIgnoreCase))) continue;
                 var position = location!.GetLineSpan().StartLinePosition;
                 matches.Add(new Match(name, path, position.Line + 1, position.Character + 1, kind!));
             }
