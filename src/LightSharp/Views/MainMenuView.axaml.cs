@@ -6,6 +6,7 @@ namespace LightSharp.Views;
 
 public partial class MainMenuView : UserControl, IDisposable
 {
+    public event Action? OpenKeybindingsRequested;
     private MainWindowMenuController? _controller;
     private Window? _shortcutOwner;
     private IDisposable? _gitAvailabilitySubscription;
@@ -67,6 +68,7 @@ public partial class MainMenuView : UserControl, IDisposable
     private void Uncomment_Click(object? sender, RoutedEventArgs e) => _controller!.Uncomment();
     private void SelectAll_Click(object? sender, RoutedEventArgs e) => _controller!.SelectAll();
     private void FocusOutput_Click(object? sender, RoutedEventArgs e) => _controller!.FocusOutput();
+    private void KeyboardShortcuts_Click(object? sender, RoutedEventArgs e) => OpenKeybindingsRequested?.Invoke();
     private async void Build_Click(object? sender, RoutedEventArgs e) => await _controller!.BuildAsync();
     private async void Start_Click(object? sender, RoutedEventArgs e) => await _controller!.StartAsync();
     private void Stop_Click(object? sender, RoutedEventArgs e) => _controller!.Stop();
