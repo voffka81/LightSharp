@@ -53,7 +53,7 @@ public sealed class NavigationPickerWindow<T> : Window
         var term = _filter.Text?.Trim() ?? "";
         _results.ItemsSource = _items.Where(item => _matches(item, term))
             .Take(250).Select(item => new NavigationEntry(item, _label(item))).ToArray();
-        _results.SelectedIndex = _results.ItemCount > 0 ? 0 : -1;
+        _results.SelectedIndex = 0;
     }
 
     private async Task OpenSelectedAsync()
