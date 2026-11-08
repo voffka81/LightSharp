@@ -15,10 +15,16 @@ public sealed class EditorRecoveryStore
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "LightSharp", "recovery.json");
 
-    public void Save(IEnumerable<EditorDocument> documents)
+    public void Save(IEnumerable<EditorDocument> documents, IEnumerable<RecoverySnapshot>? preserved = null)
     {
-        var snapshots = documents.Where(d => d.IsDirty)
-            .Select(d => new RecoverySnapshot(d.FullPath, d.SavedText, d.Text)).ToArray();
+        var dirty = documents.Where(d => d.IsDirty)
+            .Select(d => new RecoverySnapshot(d.FullPath, d.SavedText, d.Text));
+        // Keep drafts that could not be restored due to external changes or I/O errors.
+        // An actively edited document always supersedes its older snapshot.
+        var snapshots = dirty.Concat((preserved ?? []).Where(old =>
+                !documents.Any(d => d.IsDirty && string.Equals(d.FullPath, old.Path, StringComparison.OrdinalIgnoreCase))))
+            .GroupBy(snapshot => snapshot.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First()).ToArray();
         var directory = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(_path))!;
         Directory.CreateDirectory(directory);
         var temp = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";

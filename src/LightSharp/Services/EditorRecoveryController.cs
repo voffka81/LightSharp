@@ -10,6 +10,7 @@ public sealed class EditorRecoveryController : IDisposable
     private readonly Action<string> _log;
     private readonly EditorSessionStore _sessionStore = new();
     private readonly EditorRecoveryStore _recoveryStore = new();
+    private readonly Dictionary<string, RecoverySnapshot> _unresolved = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(30) };
 
     public EditorRecoveryController(EditorWorkspaceController editor, Action<string> log)
@@ -78,12 +79,19 @@ public sealed class EditorRecoveryController : IDisposable
     {
         foreach (var snapshot in _recoveryStore.Load())
         {
-            if (string.IsNullOrWhiteSpace(snapshot.Path) || !File.Exists(snapshot.Path)) continue;
+            if (string.IsNullOrWhiteSpace(snapshot.Path)) continue;
+            if (!File.Exists(snapshot.Path))
+            {
+                _unresolved[snapshot.Path] = snapshot;
+                _log($"Recovery retained for missing file: {snapshot.Path}");
+                continue;
+            }
             try
             {
                 // Never apply a draft over a file that has changed on disk.
                 if (!string.Equals(await File.ReadAllTextAsync(snapshot.Path), snapshot.SavedText, StringComparison.Ordinal))
                 {
+                    _unresolved[snapshot.Path] = snapshot;
                     _log($"Recovery skipped for externally modified file: {snapshot.Path}");
                     continue;
                 }
@@ -110,6 +118,7 @@ public sealed class EditorRecoveryController : IDisposable
             }
             catch (Exception ex)
             {
+                _unresolved[snapshot.Path] = snapshot;
                 _log($"Recovery failed for {snapshot.Path}: {ex.Message}");
             }
         }
@@ -117,7 +126,7 @@ public sealed class EditorRecoveryController : IDisposable
 
     private void SaveRecoverySnapshot()
     {
-        try { _recoveryStore.Save(_editor.Documents); }
+        try { _recoveryStore.Save(_editor.Documents, _unresolved.Values); }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Cannot save recovery snapshot: {ex.Message}");
