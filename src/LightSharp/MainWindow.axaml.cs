@@ -65,7 +65,7 @@ public sealed partial class MainWindow : Window
             OutputPanel, new InputHandlerService(_keyBindings), _workspaceMenuController, _dotNetCommandController,
             RefreshGitStatusAsync,
             _solutionExplorerDock!, _gitChangesTool!);
-        MainMenu.AttachController(_menuController, _messageBus, this);
+        MainMenu.AttachController(_menuController, _messageBus, this, _keyBindings);
         MainMenu.OpenKeybindingsRequested += () => new KeybindingsWindow(_keyBindings).ShowDialog(this);
         MainToolbar.AttachController(_menuController);
         _propertiesPanelController = new PropertiesPanelController(

@@ -9,6 +9,7 @@ public partial class MainMenuView : UserControl, IDisposable
     public event Action? OpenKeybindingsRequested;
     private MainWindowMenuController? _controller;
     private Window? _shortcutOwner;
+    private KeyBindingService? _keyBindings;
     private IDisposable? _gitAvailabilitySubscription;
 
     public MainMenuView()
@@ -17,9 +18,13 @@ public partial class MainMenuView : UserControl, IDisposable
         GitMenuItem.IsEnabled = false;
     }
 
-    public void AttachController(MainWindowMenuController controller, IMessageBus messageBus, Window shortcutOwner)
+    public void AttachController(MainWindowMenuController controller, IMessageBus messageBus, Window shortcutOwner, KeyBindingService keyBindings)
     {
         _controller = controller;
+        if (_keyBindings is not null) _keyBindings.Changed -= KeyBindings_Changed;
+        _keyBindings = keyBindings;
+        _keyBindings.Changed += KeyBindings_Changed;
+        RefreshShortcutLabels();
         if (_shortcutOwner is not null) _shortcutOwner.KeyDown -= ShortcutOwner_KeyDown;
         _shortcutOwner = shortcutOwner;
         _shortcutOwner.KeyDown += ShortcutOwner_KeyDown;
@@ -32,8 +37,41 @@ public partial class MainMenuView : UserControl, IDisposable
     {
         if (_shortcutOwner is not null) _shortcutOwner.KeyDown -= ShortcutOwner_KeyDown;
         _shortcutOwner = null;
+        if (_keyBindings is not null) _keyBindings.Changed -= KeyBindings_Changed;
+        _keyBindings = null;
         _gitAvailabilitySubscription?.Dispose();
         _gitAvailabilitySubscription = null;
+    }
+
+
+    private void KeyBindings_Changed(object? sender, EventArgs e) => RefreshShortcutLabels();
+
+    private void RefreshShortcutLabels()
+    {
+        if (_keyBindings is null) return;
+        var bindings = _keyBindings.GetBindings();
+        foreach (var (item, command, label) in new (MenuItem Item, InputCommand Command, string Label)[]
+        {
+            (ShortcutNewProject, InputCommand.NewProject, "New Project"),
+            (ShortcutOpenFile, InputCommand.OpenFile, "Open File"),
+            (ShortcutOpenSolution, InputCommand.OpenSolution, "Open Solution"),
+            (ShortcutSaveAll, InputCommand.SaveAll, "Save All"),
+            (ShortcutSave, InputCommand.Save, "Save"),
+            (ShortcutFindInFiles, InputCommand.FindInFiles, "Find in Files"),
+            (ShortcutFind, InputCommand.Find, "Find"),
+            (ShortcutReplace, InputCommand.Replace, "Replace"),
+            (ShortcutFormatDocument, InputCommand.FormatDocument, "Format Document"),
+            (ShortcutFormatSelection, InputCommand.FormatSelection, "Format Selection"),
+            (ShortcutToggleLineComment, InputCommand.ToggleLineComment, "Comment Selection"),
+            (ShortcutUncommentLine, InputCommand.UncommentLine, "Uncomment Selection"),
+            (ShortcutSelectAll, InputCommand.SelectAll, "Select All"),
+            (ShortcutBuild, InputCommand.Build, "Build"),
+            (ShortcutTest, InputCommand.Test, "Run Tests")
+        })
+        {
+            var gestures = bindings.GetValueOrDefault(command.ToString(), []);
+            item.Header = gestures.Length == 0 ? label : $"{label}  {string.Join(", ", gestures)}";
+        }
     }
 
     private async void ShortcutOwner_KeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
