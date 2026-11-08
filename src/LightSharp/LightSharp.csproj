@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="Styles\EditorHighlighting.json" />
+    <EmbeddedResource Include="Keymaps\default-keymap.json" />
     <AvaloniaResource Include="Assets\LightSharp.png" />
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
