@@ -104,20 +104,20 @@ public sealed class EditorRecoveryController : IDisposable
                     }
                     else if (choice == RecoveryConflictChoice.RestoreDraft)
                     {
-                        var document = _editor.Documents.FirstOrDefault(item =>
+                        var recoveryDocument = _editor.Documents.FirstOrDefault(item =>
                             string.Equals(item.FullPath, snapshot.Path, StringComparison.OrdinalIgnoreCase));
-                        if (document is null)
+                        if (recoveryDocument is null)
                         {
                             await _editor.OpenDocumentAsync(new FileNode
                             {
                                 Name = Path.GetFileName(snapshot.Path), FullPath = snapshot.Path, IsDirectory = false
                             });
-                            document = _editor.ActiveDocument;
+                            recoveryDocument = _editor.ActiveDocument;
                         }
-                        if (document is not null && !document.IsDirty)
+                        if (recoveryDocument is not null && !recoveryDocument.IsDirty)
                         {
-                            document.Text = snapshot.DraftText;
-                            if (ReferenceEquals(document, _editor.ActiveDocument)) _editor.SetActiveDocument(document);
+                            recoveryDocument.Text = snapshot.DraftText;
+                            if (ReferenceEquals(recoveryDocument, _editor.ActiveDocument)) _editor.SetActiveDocument(recoveryDocument);
                             _log($"Recovered unsaved draft: {snapshot.Path}");
                         }
                         else
