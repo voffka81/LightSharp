@@ -300,7 +300,7 @@ public sealed class CSharpCompletionService : IDisposable
                 .FirstOrDefault(candidate => candidate is not null);
         if (symbol is null) return [];
         var references = await SymbolFinder.FindReferencesAsync(
-            symbol, current.Project.Solution, cancellationToken);
+            symbol, current.Project.Solution, cancellationToken: cancellationToken);
         var hits = new List<CodeReferenceLocation>();
         foreach (var reference in references)
         foreach (var location in reference.Locations)
