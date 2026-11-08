@@ -132,7 +132,7 @@ public sealed class KeyBindingService
     {
         _commands.Clear();
         _prefixes.Clear();
-        _warnings.Clear();
+        _warnings.RemoveAll(w => w.StartsWith("Shortcut conflict:", StringComparison.Ordinal));
         foreach (var (name, gestures) in GetBindings())
         {
             if (!Enum.TryParse<InputCommand>(name, true, out var command)) continue;
