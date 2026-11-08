@@ -104,6 +104,7 @@ public sealed class MainWindowMenuController
         switch (result.Command)
         {
             case InputCommand.Find: Find(); break;
+            case InputCommand.GoToDefinition: await _editor.GoToDefinitionAsync(); break;
             case InputCommand.Replace: Replace(); break;
             case InputCommand.FindInFiles: FindInFiles(); break;
             case InputCommand.OpenSolution: await OpenSolutionAsync(); break;

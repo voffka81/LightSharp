@@ -266,6 +266,16 @@ public sealed class CSharpCompletionService : IDisposable
         return (await formattedDocument.GetTextAsync(cancellationToken)).ToString();
     }
 
+    public async Task<CodeDefinitionLocation?> FindDefinitionAsync(
+        string projectPath, string filePath, string source, int offset,
+        CancellationToken cancellationToken)
+    {
+        var document = await GetDocumentAsync(projectPath, filePath, cancellationToken);
+        if (document is null) return null;
+        return await CodeNavigationService.FindDefinitionAsync(
+            document.WithText(SourceText.From(source)), offset, cancellationToken);
+    }
+
     public void Dispose()
     {
         _workspace?.Dispose();

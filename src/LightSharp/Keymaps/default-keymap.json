@@ -1,0 +1,65 @@
+{
+  "Find": [
+    "Ctrl+F"
+  ],
+  "GoToDefinition": [
+    "F12"
+  ],
+  "Replace": [
+    "Ctrl+H"
+  ],
+  "FindInFiles": [
+    "Ctrl+Shift+F"
+  ],
+  "OpenSolution": [
+    "Ctrl+Shift+O"
+  ],
+  "OpenFile": [
+    "Ctrl+O"
+  ],
+  "NewProject": [
+    "Ctrl+Shift+N"
+  ],
+  "Save": [
+    "Ctrl+S"
+  ],
+  "SaveAll": [
+    "Ctrl+Shift+S"
+  ],
+  "Build": [
+    "Ctrl+Shift+B"
+  ],
+  "Start": [
+    "F5"
+  ],
+  "Stop": [
+    "Shift+F5"
+  ],
+  "CloseDocument": [
+    "Ctrl+F4"
+  ],
+  "SelectAll": [
+    "Ctrl+A"
+  ],
+  "NextDocument": [
+    "Ctrl+Tab"
+  ],
+  "PreviousDocument": [
+    "Ctrl+Shift+Tab"
+  ],
+  "Test": [
+    "Ctrl+R Ctrl+T"
+  ],
+  "ToggleLineComment": [
+    "Ctrl+K Ctrl+C"
+  ],
+  "UncommentLine": [
+    "Ctrl+K Ctrl+U"
+  ],
+  "FormatDocument": [
+    "Ctrl+K Ctrl+D"
+  ],
+  "FormatSelection": [
+    "Ctrl+K Ctrl+F"
+  ]
+}
