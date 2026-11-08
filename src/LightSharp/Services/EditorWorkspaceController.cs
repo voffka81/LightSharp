@@ -98,7 +98,7 @@ public sealed class EditorWorkspaceController : IDisposable
         if (_activeDocument is null) return;
         try
         {
-            await File.WriteAllTextAsync(_activeDocument.FullPath, _activeDocument.Text);
+            await AtomicDocumentWriter.WriteAsync(_activeDocument.FullPath, _activeDocument.Text);
             _activeDocument.MarkSaved();
             _output.StatusMessage = $"Saved {_activeDocument.Name}";
         }
@@ -111,7 +111,7 @@ public sealed class EditorWorkspaceController : IDisposable
         {
             try
             {
-                await File.WriteAllTextAsync(document.FullPath, document.Text);
+                await AtomicDocumentWriter.WriteAsync(document.FullPath, document.Text);
                 document.MarkSaved();
             }
             catch (Exception ex)
@@ -134,7 +134,7 @@ public sealed class EditorWorkspaceController : IDisposable
             {
                 try
                 {
-                    await File.WriteAllTextAsync(document.FullPath, document.Text);
+                    await AtomicDocumentWriter.WriteAsync(document.FullPath, document.Text);
                     document.MarkSaved();
                 }
                 catch (Exception ex)
