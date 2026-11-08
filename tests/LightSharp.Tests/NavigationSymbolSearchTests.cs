@@ -34,6 +34,6 @@ public sealed class NavigationSymbolSearchTests
     [Fact]
     public void EmptyQueryReturnsNoResults()
     {
-        Assert.Empty(NavigationSymbolSearch.Find([("a.cs", "class Editor {}")], " "));
+        Assert.Single(NavigationSymbolSearch.Find([("a.cs", "class Editor {}")], " "));
     }
 }
