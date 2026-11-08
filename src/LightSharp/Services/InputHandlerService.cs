@@ -5,6 +5,7 @@ namespace LightSharp.Services;
 public enum InputCommand
 {
     Find,
+    GoToDefinition,
     Replace,
     FindInFiles,
     OpenSolution,
@@ -108,6 +109,7 @@ public sealed class InputHandlerService
 
     private static InputHandlerResult MapF5(Key key, bool shift, bool ctrl)
     {
+        if (key == Key.F12 && !shift && !ctrl) return new(true, InputCommand.GoToDefinition);
         if (key != Key.F5) return default;
         return new(true, shift ? InputCommand.Stop : InputCommand.Start);
     }
