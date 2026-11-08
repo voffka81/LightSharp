@@ -258,6 +258,117 @@ public sealed class EditorWorkspaceController : IDisposable
         }
     }
 
+    public async Task FindAllReferencesAsync()
+    {
+        var document = _activeDocument;
+        if (document is null) return;
+        var project = FindProjectForFile(document.FullPath);
+        if (project is null) { _output.StatusMessage = "Open a C# project to find references"; return; }
+        _navigationCts?.Cancel();
+        var request = new CancellationTokenSource();
+        _navigationCts = request;
+        var source = _view.Text;
+        try
+        {
+            var results = await _completionService.FindReferencesAsync(
+                project, document.FullPath, source, _view.CaretOffset, request.Token);
+            if (request.IsCancellationRequested || !ReferenceEquals(document, _activeDocument)
+                || _view.Text != source) return;
+            if (results.Count == 0) { _output.StatusMessage = "No references found"; return; }
+            await new NavigationPickerWindow<CodeReferenceLocation>("Find All References", results,
+                hit => $"{Path.GetFileName(hit.FilePath)}:{hit.Line}:{hit.Column} — {hit.FilePath}",
+                (hit, term) => hit.FilePath.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || $"{hit.Line}:{hit.Column}".Contains(term, StringComparison.OrdinalIgnoreCase),
+                async hit => await NavigateToLocationAsync(hit.FilePath, hit.Line, hit.Column, hit.Length))
+                .ShowDialog(_owner);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _output.AppendOutput($"Find References failed: {ex.Message}"); }
+    }
+
+    public async Task ShowOpenDocumentsAsync()
+    {
+        var items = _documents.ToArray();
+        await new NavigationPickerWindow<EditorDocument>("Open Documents", items,
+            item => item.FullPath,
+            (item, term) => item.FullPath.Contains(term, StringComparison.OrdinalIgnoreCase),
+            item => { SetActiveDocument(item); return Task.CompletedTask; })
+            .ShowDialog(_owner);
+    }
+
+    public async Task ShowFilesAsync()
+    {
+        var projectPaths = _projects.SelectMany(FlattenFiles)
+            .Where(node => !node.IsDirectory && File.Exists(node.FullPath))
+            .Select(node => node.FullPath);
+        var items = _documents.Select(d => d.FullPath).Concat(projectPaths)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        await new NavigationPickerWindow<string>("Go to File", items,
+            path => path,
+            (path, term) => path.Contains(term, StringComparison.OrdinalIgnoreCase),
+            async path => await NavigateToLocationAsync(path, 1, 1, 0))
+            .ShowDialog(_owner);
+    }
+
+    public async Task ShowSymbolsAsync()
+    {
+        var paths = _projects.SelectMany(FlattenFiles)
+            .Where(node => !node.IsDirectory && node.FullPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+                && File.Exists(node.FullPath))
+            .Select(node => node.FullPath)
+            .Concat(_documents.Where(d => d.FullPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                .Select(d => d.FullPath))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        _navigationCts?.Cancel();
+        var request = new CancellationTokenSource();
+        _navigationCts = request;
+        try
+        {
+            var documents = new List<(string Path, string Source)>();
+            foreach (var path in paths)
+            {
+                request.Token.ThrowIfCancellationRequested();
+                var open = _documents.FirstOrDefault(d =>
+                    string.Equals(d.FullPath, path, StringComparison.OrdinalIgnoreCase));
+                documents.Add((path, open?.Text ?? await File.ReadAllTextAsync(path, request.Token)));
+            }
+            var items = NavigationSymbolSearch.Find(documents, "", limit: 10000,
+                cancellationToken: request.Token);
+            if (request.IsCancellationRequested) return;
+            await new NavigationPickerWindow<NavigationSymbolSearch.Match>("Go to Symbol", items,
+                item => $"{item.Kind} {item.Name} — {Path.GetFileName(item.FilePath)}:{item.Line}",
+                (item, term) => item.Name.Contains(term, StringComparison.OrdinalIgnoreCase),
+                async item => await NavigateToLocationAsync(item.FilePath, item.Line, item.Column, item.Name.Length))
+                .ShowDialog(_owner);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _output.AppendOutput($"Symbol navigation failed: {ex.Message}"); }
+    }
+
+    private static IEnumerable<FileNode> FlattenFiles(FileNode node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+        foreach (var descendant in FlattenFiles(child))
+            yield return descendant;
+    }
+
+    private async Task NavigateToLocationAsync(string path, int line, int column, int length)
+    {
+        var document = _documents.FirstOrDefault(item =>
+            string.Equals(item.FullPath, path, StringComparison.OrdinalIgnoreCase));
+        if (document is null)
+        {
+            await OpenDocumentAsync(new FileNode { FullPath = path, Name = Path.GetFileName(path) });
+            document = _documents.FirstOrDefault(item =>
+                string.Equals(item.FullPath, path, StringComparison.OrdinalIgnoreCase));
+        }
+        if (document is null) return;
+        SetActiveDocument(document);
+        _view.NavigateTo(line, column);
+        if (length > 0) _view.Select(_view.CaretOffset, Math.Min(length, _view.TextLength - _view.CaretOffset));
+    }
+
     public void ToggleLineComment(bool uncomment)
     {
         if (!_view.HasDocument) return;

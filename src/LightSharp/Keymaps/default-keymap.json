@@ -5,6 +5,10 @@
   "GoToDefinition": [
     "F12"
   ],
+  "FindAllReferences": ["Shift+F12"],
+  "GoToFile": ["Ctrl+P"],
+  "GoToSymbol": ["Ctrl+T"],
+  "OpenDocuments": ["Ctrl+E"],
   "Replace": [
     "Ctrl+H"
   ],

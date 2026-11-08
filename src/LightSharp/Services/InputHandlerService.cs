@@ -4,7 +4,7 @@ namespace LightSharp.Services;
 
 public enum InputCommand
 {
-    Find, GoToDefinition, Replace, FindInFiles, OpenSolution, OpenFile,
+    Find, GoToDefinition, FindAllReferences, GoToFile, GoToSymbol, OpenDocuments, Replace, FindInFiles, OpenSolution, OpenFile,
     NewProject, Save, SaveAll, Build, Start, Stop, CloseDocument, SelectAll,
     NextDocument, PreviousDocument, Test, ToggleLineComment, UncommentLine,
     FormatDocument, FormatSelection
