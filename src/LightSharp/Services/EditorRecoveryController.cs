@@ -1,4 +1,6 @@
 using Avalonia.Threading;
+using Avalonia.Controls;
+using LightSharp.Views;
 using LightSharp.Models;
 
 namespace LightSharp.Services;
@@ -8,15 +10,17 @@ public sealed class EditorRecoveryController : IDisposable
 {
     private readonly EditorWorkspaceController _editor;
     private readonly Action<string> _log;
+    private readonly Window _owner;
     private readonly EditorSessionStore _sessionStore = new();
     private readonly EditorRecoveryStore _recoveryStore = new();
     private readonly Dictionary<string, RecoverySnapshot> _unresolved = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(30) };
 
-    public EditorRecoveryController(EditorWorkspaceController editor, Action<string> log)
+    public EditorRecoveryController(EditorWorkspaceController editor, Action<string> log, Window owner)
     {
         _editor = editor;
         _log = log;
+        _owner = owner;
         _timer.Tick += OnTick;
     }
 
@@ -91,8 +95,38 @@ public sealed class EditorRecoveryController : IDisposable
                 // Never apply a draft over a file that has changed on disk.
                 if (!string.Equals(await File.ReadAllTextAsync(snapshot.Path), snapshot.SavedText, StringComparison.Ordinal))
                 {
-                    _unresolved[snapshot.Path] = snapshot;
-                    _log($"Recovery skipped for externally modified file: {snapshot.Path}");
+                    var choice = await new RecoveryConflictDialog(Path.GetFileName(snapshot.Path))
+                        .ShowDialog<RecoveryConflictChoice>(_owner);
+                    if (choice == RecoveryConflictChoice.KeepBackup)
+                    {
+                        _unresolved[snapshot.Path] = snapshot;
+                        _log($"Recovery backup retained: {snapshot.Path}");
+                    }
+                    else if (choice == RecoveryConflictChoice.RestoreDraft)
+                    {
+                        var recoveryDocument = _editor.Documents.FirstOrDefault(item =>
+                            string.Equals(item.FullPath, snapshot.Path, StringComparison.OrdinalIgnoreCase));
+                        if (recoveryDocument is null)
+                        {
+                            await _editor.OpenDocumentAsync(new FileNode
+                            {
+                                Name = Path.GetFileName(snapshot.Path), FullPath = snapshot.Path, IsDirectory = false
+                            });
+                            recoveryDocument = _editor.ActiveDocument;
+                        }
+                        if (recoveryDocument is not null && !recoveryDocument.IsDirty)
+                        {
+                            recoveryDocument.Text = snapshot.DraftText;
+                            if (ReferenceEquals(recoveryDocument, _editor.ActiveDocument)) _editor.SetActiveDocument(recoveryDocument);
+                            _log($"Recovered unsaved draft: {snapshot.Path}");
+                        }
+                        else
+                        {
+                            _unresolved[snapshot.Path] = snapshot;
+                            _log($"Recovery retained because editor is already dirty: {snapshot.Path}");
+                        }
+                    }
+                    else _log($"Recovery backup discarded by user: {snapshot.Path}");
                     continue;
                 }
 

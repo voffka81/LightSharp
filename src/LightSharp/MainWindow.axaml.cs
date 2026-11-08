@@ -98,7 +98,7 @@ public sealed partial class MainWindow : Window
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _diagnosticsTimer.Tick += (_, _) => UpdateDiagnostics();
         _diagnosticsTimer.Start();
-        _editorRecoveryController = new EditorRecoveryController(_editorWorkspaceController, OutputPanel.AppendOutput);
+        _editorRecoveryController = new EditorRecoveryController(_editorWorkspaceController, OutputPanel.AppendOutput, this);
         Opened += async (_, _) => await _editorRecoveryController.StartAsync();
         Closed += (_, _) =>
         {
