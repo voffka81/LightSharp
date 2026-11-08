@@ -1,5 +1,6 @@
 using Avalonia.Threading;
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using LightSharp.Views;
 using LightSharp.Models;
 
@@ -86,8 +87,36 @@ public sealed class EditorRecoveryController : IDisposable
             if (string.IsNullOrWhiteSpace(snapshot.Path)) continue;
             if (!File.Exists(snapshot.Path))
             {
+                // The original path is missing: never silently recreate it.
                 _unresolved[snapshot.Path] = snapshot;
-                _log($"Recovery retained for missing file: {snapshot.Path}");
+                try
+                {
+                    var choice = await new MissingFileRecoveryDialog(Path.GetFileName(snapshot.Path))
+                        .ShowDialog<MissingFileRecoveryChoice>(_owner);
+                    if (choice == MissingFileRecoveryChoice.DiscardBackup)
+                    {
+                        _unresolved.Remove(snapshot.Path);
+                        _log($"Missing-file recovery discarded by user: {snapshot.Path}");
+                    }
+                    else if (choice == MissingFileRecoveryChoice.ExportDraft)
+                    {
+                        var selected = await _owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                        {
+                            Title = "Export recovered draft as a new file",
+                            SuggestedFileName = Path.GetFileName(snapshot.Path) + ".recovered"
+                        });
+                        if (selected is not null && selected.Path.IsFile)
+                        {
+                            await MissingFileRecoveryExporter.ExportAsync(selected.Path.LocalPath, snapshot);
+                            _unresolved.Remove(snapshot.Path);
+                            _log($"Recovered draft exported: {selected.Path.LocalPath}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log($"Recovery export failed; backup retained for {snapshot.Path}: {ex.Message}");
+                }
                 continue;
             }
             try
