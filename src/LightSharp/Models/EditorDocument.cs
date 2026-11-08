@@ -6,6 +6,7 @@ namespace LightSharp.Models;
 public sealed class EditorDocument : INotifyPropertyChanged
 {
     private string _text;
+    private string _savedText;
     private bool _isDirty;
     private bool _isActive;
 
@@ -13,6 +14,7 @@ public sealed class EditorDocument : INotifyPropertyChanged
     {
         FullPath = fullPath;
         _text = text;
+        _savedText = text;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -56,7 +58,13 @@ public sealed class EditorDocument : INotifyPropertyChanged
         }
     }
 
-    public void MarkSaved() => IsDirty = false;
+    public string SavedText => _savedText;
+
+    public void MarkSaved()
+    {
+        _savedText = _text;
+        IsDirty = false;
+    }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
