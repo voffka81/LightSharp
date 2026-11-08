@@ -105,6 +105,10 @@ public sealed class MainWindowMenuController
         {
             case InputCommand.Find: Find(); break;
             case InputCommand.GoToDefinition: await _editor.GoToDefinitionAsync(); break;
+            case InputCommand.FindAllReferences: await _editor.FindAllReferencesAsync(); break;
+            case InputCommand.GoToFile: await _editor.ShowFilesAsync(); break;
+            case InputCommand.GoToSymbol: await _editor.ShowSymbolsAsync(); break;
+            case InputCommand.OpenDocuments: await _editor.ShowOpenDocumentsAsync(); break;
             case InputCommand.Replace: Replace(); break;
             case InputCommand.FindInFiles: FindInFiles(); break;
             case InputCommand.OpenSolution: await OpenSolutionAsync(); break;
