@@ -93,15 +93,37 @@ public sealed class EditorWorkspaceController : IDisposable
         }
     }
 
+    private async Task<bool> SaveDocumentWithConflictResolutionAsync(EditorDocument document)
+    {
+        // Compare against the last known disk version before writing.
+        var diskText = await File.ReadAllTextAsync(document.FullPath);
+        if (!string.Equals(diskText, document.SavedText, StringComparison.Ordinal))
+        {
+            var choice = await new ExternalChangeDialog(document.Name)
+                .ShowDialog<ExternalChangeChoice>(_owner);
+            if (choice == ExternalChangeChoice.Cancel) return false;
+            if (choice == ExternalChangeChoice.Reload)
+            {
+                document.Text = diskText;
+                document.MarkSaved();
+                if (ReferenceEquals(_activeDocument, document)) SetActiveDocument(document);
+                _output.StatusMessage = $"Reloaded {document.Name} from disk";
+                return false;
+            }
+            // Overwrite is allowed only after the explicit choice above.
+        }
+        await AtomicDocumentWriter.WriteAsync(document.FullPath, document.Text);
+        document.MarkSaved();
+        return true;
+    }
+
     public async Task SaveActiveDocumentAsync()
     {
         if (_activeDocument is null) return;
         try
         {
-            await ExternalDocumentChangeGuard.EnsureUnchangedAsync(_activeDocument.FullPath, _activeDocument.SavedText);
-            await AtomicDocumentWriter.WriteAsync(_activeDocument.FullPath, _activeDocument.Text);
-            _activeDocument.MarkSaved();
-            _output.StatusMessage = $"Saved {_activeDocument.Name}";
+            if (await SaveDocumentWithConflictResolutionAsync(_activeDocument))
+                _output.StatusMessage = $"Saved {_activeDocument.Name}";
         }
         catch (Exception ex) { _output.AppendOutput(ex.Message); }
     }
@@ -112,9 +134,7 @@ public sealed class EditorWorkspaceController : IDisposable
         {
             try
             {
-                await ExternalDocumentChangeGuard.EnsureUnchangedAsync(document.FullPath, document.SavedText);
-                await AtomicDocumentWriter.WriteAsync(document.FullPath, document.Text);
-                document.MarkSaved();
+                if (!await SaveDocumentWithConflictResolutionAsync(document)) return;
             }
             catch (Exception ex)
             {
@@ -136,9 +156,7 @@ public sealed class EditorWorkspaceController : IDisposable
             {
                 try
                 {
-                    await ExternalDocumentChangeGuard.EnsureUnchangedAsync(document.FullPath, document.SavedText);
-                await AtomicDocumentWriter.WriteAsync(document.FullPath, document.Text);
-                    document.MarkSaved();
+                    if (!await SaveDocumentWithConflictResolutionAsync(document)) return;
                 }
                 catch (Exception ex)
                 {
