@@ -29,7 +29,7 @@ public sealed partial class MainWindow : Window
     private ToolDock? _solutionExplorerDock;
     private Tool? _gitChangesTool;
     private readonly DispatcherTimer _diagnosticsTimer;
-    private readonly EditorSessionStore _editorSessionStore = new();
+    private readonly EditorRecoveryController _editorRecoveryController;
 
     public MainWindow()
     {
@@ -98,10 +98,12 @@ public sealed partial class MainWindow : Window
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _diagnosticsTimer.Tick += (_, _) => UpdateDiagnostics();
         _diagnosticsTimer.Start();
-        Opened += async (_, _) => await RestoreEditorSessionAsync();
+        _editorRecoveryController = new EditorRecoveryController(_editorWorkspaceController, OutputPanel.AppendOutput);
+        Opened += async (_, _) => await _editorRecoveryController.StartAsync();
         Closed += (_, _) =>
         {
-            SaveEditorSession();
+            _editorRecoveryController.Stop();
+            _editorRecoveryController.Dispose();
             _diagnosticsTimer.Stop();
             MainMenu.Dispose();
             _dotNetCommandController.Dispose();
@@ -115,42 +117,6 @@ public sealed partial class MainWindow : Window
         UpdateDiagnostics();
     }
 
-
-    private async Task RestoreEditorSessionAsync()
-    {
-        var session = _editorSessionStore.Load();
-        foreach (var path in session.OpenFiles.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) continue;
-            await _editorWorkspaceController.OpenDocumentAsync(new FileNode
-            {
-                Name = Path.GetFileName(path),
-                FullPath = path,
-                IsDirectory = false
-            });
-        }
-
-        if (session.ActiveFile is { } active)
-        {
-            var document = _editorWorkspaceController.Documents.FirstOrDefault(
-                item => string.Equals(item.FullPath, active, StringComparison.OrdinalIgnoreCase));
-            if (document is not null) _editorWorkspaceController.SetActiveDocument(document);
-        }
-    }
-
-    private void SaveEditorSession()
-    {
-        try
-        {
-            _editorSessionStore.Save(new EditorSession(
-                _editorWorkspaceController.Documents.Select(item => item.FullPath).ToArray(),
-                _editorWorkspaceController.ActiveDocument?.FullPath));
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Cannot save editor session: {ex.Message}");
-        }
-    }
 
     private void InitializeDockLayout()
     {
