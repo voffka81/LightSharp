@@ -33,3 +33,6 @@ jobs:
 
       - name: Build
         run: dotnet build LightSharp.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test LightSharp.slnx --configuration Release --no-build
