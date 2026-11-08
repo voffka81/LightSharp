@@ -332,14 +332,8 @@ public sealed class EditorWorkspaceController : IDisposable
                     string.Equals(d.FullPath, path, StringComparison.OrdinalIgnoreCase));
                 documents.Add((path, open?.Text ?? await File.ReadAllTextAsync(path, request.Token)));
             }
-            var matches = NavigationSymbolSearch.Find(documents, "", cancellationToken: request.Token);
-            // A blank query intentionally returns no matches; build the symbol index with a
-            // wildcard-friendly scan by passing a broad set of identifier characters below.
-            var all = new List<NavigationSymbolSearch.Match>();
-            foreach (var letter in "abcdefghijklmnopqrstuvwxyz_")
-                all.AddRange(NavigationSymbolSearch.Find(documents, letter.ToString(),
-                    limit: 10000, cancellationToken: request.Token));
-            var items = all.Distinct().ToArray();
+            var items = NavigationSymbolSearch.Find(documents, "", limit: 10000,
+                cancellationToken: request.Token);
             if (request.IsCancellationRequested) return;
             await new NavigationPickerWindow<NavigationSymbolSearch.Match>("Go to Symbol", items,
                 item => $"{item.Kind} {item.Name} — {Path.GetFileName(item.FilePath)}:{item.Line}",
