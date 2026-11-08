@@ -30,6 +30,8 @@ public sealed partial class MainWindow : Window
     private Tool? _gitChangesTool;
     private readonly DispatcherTimer _diagnosticsTimer;
     private readonly EditorSessionStore _editorSessionStore = new();
+    private readonly EditorRecoveryStore _editorRecoveryStore = new();
+    private readonly DispatcherTimer _recoveryTimer;
 
     public MainWindow()
     {
@@ -98,10 +100,19 @@ public sealed partial class MainWindow : Window
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _diagnosticsTimer.Tick += (_, _) => UpdateDiagnostics();
         _diagnosticsTimer.Start();
-        Opened += async (_, _) => await RestoreEditorSessionAsync();
+        _recoveryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _recoveryTimer.Tick += (_, _) => SaveRecoverySnapshot();
+        Opened += async (_, _) =>
+        {
+            await RestoreEditorSessionAsync();
+            await RestoreRecoverySnapshotsAsync();
+            _recoveryTimer.Start();
+        };
         Closed += (_, _) =>
         {
             SaveEditorSession();
+            _recoveryTimer.Stop();
+            SaveRecoverySnapshot();
             _diagnosticsTimer.Stop();
             MainMenu.Dispose();
             _dotNetCommandController.Dispose();
@@ -149,6 +160,57 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Cannot save editor session: {ex.Message}");
+        }
+    }
+
+
+    private async Task RestoreRecoverySnapshotsAsync()
+    {
+        foreach (var snapshot in _editorRecoveryStore.Load())
+        {
+            if (string.IsNullOrWhiteSpace(snapshot.Path) || !File.Exists(snapshot.Path)) continue;
+            try
+            {
+                // Never apply a draft over a file that has changed on disk.
+                if (!string.Equals(await File.ReadAllTextAsync(snapshot.Path), snapshot.SavedText, StringComparison.Ordinal))
+                {
+                    OutputPanel.AppendOutput($"Recovery skipped for externally modified file: {snapshot.Path}");
+                    continue;
+                }
+
+                var document = _editorWorkspaceController.Documents.FirstOrDefault(item =>
+                    string.Equals(item.FullPath, snapshot.Path, StringComparison.OrdinalIgnoreCase));
+                if (document is null)
+                {
+                    await _editorWorkspaceController.OpenDocumentAsync(new FileNode
+                    {
+                        Name = Path.GetFileName(snapshot.Path),
+                        FullPath = snapshot.Path,
+                        IsDirectory = false
+                    });
+                    document = _editorWorkspaceController.ActiveDocument;
+                }
+                if (document is not null && !document.IsDirty &&
+                    string.Equals(document.FullPath, snapshot.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    document.Text = snapshot.DraftText;
+                    if (ReferenceEquals(document, _editorWorkspaceController.ActiveDocument))
+                        _editorWorkspaceController.SetActiveDocument(document);
+                }
+            }
+            catch (Exception ex)
+            {
+                OutputPanel.AppendOutput($"Recovery failed for {snapshot.Path}: {ex.Message}");
+            }
+        }
+    }
+
+    private void SaveRecoverySnapshot()
+    {
+        try { _editorRecoveryStore.Save(_editorWorkspaceController.Documents); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Cannot save recovery snapshot: {ex.Message}");
         }
     }
 
