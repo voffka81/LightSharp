@@ -27,6 +27,7 @@ public sealed class EditorWorkspaceController : IDisposable
     private CancellationTokenSource? _completionRequestCts;
     private CancellationTokenSource? _semanticDiagnosticsCts;
     private CancellationTokenSource? _quickInfoCts;
+    private CancellationTokenSource? _navigationCts;
     private CompletionWindow? _completionWindow;
     private string? _lastSemanticDiagnosticsFailure;
     private int _hoverOffset = -1;
@@ -167,6 +168,7 @@ public sealed class EditorWorkspaceController : IDisposable
     public void SetActiveDocument(EditorDocument? document)
     {
         _completionRequestCts?.Cancel();
+        _navigationCts?.Cancel();
         ClearQuickInfo();
         _completionWindow?.Hide();
         _completionWindow = null;
@@ -185,6 +187,55 @@ public sealed class EditorWorkspaceController : IDisposable
     }
 
     public void NavigateTo(int line, int column) => _view.NavigateTo(line, column);
+
+    public async Task GoToDefinitionAsync()
+    {
+        var document = _activeDocument;
+        if (document is null) return;
+        var projectPath = FindProjectForFile(document.FullPath);
+        if (projectPath is null)
+        {
+            _output.StatusMessage = "Open a C# project to navigate to definitions";
+            return;
+        }
+
+        _navigationCts?.Cancel();
+        _navigationCts?.Dispose();
+        var request = new CancellationTokenSource();
+        _navigationCts = request;
+        var source = _view.Text;
+        var offset = _view.CaretOffset;
+        try
+        {
+            var target = await _completionService.FindDefinitionAsync(
+                projectPath, document.FullPath, source, offset, request.Token);
+            if (request.IsCancellationRequested || !ReferenceEquals(_activeDocument, document) ||
+                !string.Equals(_view.Text, source, StringComparison.Ordinal)) return;
+            if (target is null)
+            {
+                _output.StatusMessage = "Definition not found in source";
+                return;
+            }
+
+            var destination = _documents.FirstOrDefault(item =>
+                string.Equals(item.FullPath, target.FilePath, StringComparison.OrdinalIgnoreCase));
+            if (destination is null)
+            {
+                destination = new EditorDocument(target.FilePath,
+                    await File.ReadAllTextAsync(target.FilePath, request.Token));
+                if (request.IsCancellationRequested) return;
+                _documents.Add(destination);
+            }
+            SetActiveDocument(destination);
+            _view.NavigateTo(target.Line, target.Column);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _output.AppendOutput($"Go to Definition failed: {ex.Message}");
+            _output.StatusMessage = "Go to Definition failed";
+        }
+    }
 
     public void ToggleLineComment(bool uncomment)
     {
@@ -251,6 +302,8 @@ public sealed class EditorWorkspaceController : IDisposable
         _semanticDiagnosticsCts?.Dispose();
         _quickInfoCts?.Cancel();
         _quickInfoCts?.Dispose();
+        _navigationCts?.Cancel();
+        _navigationCts?.Dispose();
         _syntaxDiagnosticsTimer.Stop();
         _quickInfoTimer.Stop();
         _completionWindow?.Hide();
