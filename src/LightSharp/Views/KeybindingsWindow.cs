@@ -11,7 +11,7 @@ public sealed class KeybindingsWindow : Window
 {
     private readonly KeyBindingService _bindings;
     private readonly ListBox _commands = new();
-    private readonly TextBox _filter = new() { Watermark = "Search commands..." };
+    private readonly TextBox _filter = new() { PlaceholderText = "Search commands..." };
     private readonly TextBlock _current = new();
     private readonly TextBlock _message = new() { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
     private readonly Button _capture = new() { Content = "Record shortcut" };
