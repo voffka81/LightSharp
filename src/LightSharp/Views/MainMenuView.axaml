@@ -5,20 +5,20 @@
     <Grid ColumnDefinitions="Auto,*,Auto" Height="38">
       <Menu Grid.Column="0" Background="Transparent" Padding="0" VerticalAlignment="Center">
         <MenuItem Header="File">
-          <MenuItem Header="New Project...  Ctrl+Shift+N" Click="NewProject_Click"/>
+          <MenuItem x:Name="ShortcutNewProject" Header="New Project" Click="NewProject_Click"/>
           <MenuItem Header="New File..." Click="NewFile_Click"/>
           <Separator/>
-          <MenuItem Header="Open File...  Ctrl+O" Click="OpenFile_Click"/>
-          <MenuItem Header="Open Solution...  Ctrl+Shift+O" Click="OpenSolution_Click"/>
+          <MenuItem x:Name="ShortcutOpenFile" Header="Open File" Click="OpenFile_Click"/>
+          <MenuItem x:Name="ShortcutOpenSolution" Header="Open Solution" Click="OpenSolution_Click"/>
           <MenuItem Header="Open Folder..." Click="OpenFolder_Click"/>
           <Separator/>
           <MenuItem x:Name="ShortcutSave" Header="Save" Click="Save_Click"/>
           <MenuItem x:Name="ShortcutSaveAll" Header="Save All" Click="SaveAll_Click"/>
         </MenuItem>
         <MenuItem Header="Edit">
-          <MenuItem Header="Find...  Ctrl+F" Click="Find_Click"/>
-          <MenuItem Header="Replace...  Ctrl+H" Click="Replace_Click"/>
-          <MenuItem Header="Find in Files...  Ctrl+Shift+F" Click="FindInFiles_Click"/>
+          <MenuItem x:Name="ShortcutFind" Header="Find" Click="Find_Click"/>
+          <MenuItem x:Name="ShortcutReplace" Header="Replace" Click="Replace_Click"/>
+          <MenuItem x:Name="ShortcutFindInFiles" Header="Find in Files" Click="FindInFiles_Click"/>
           <Separator/>
           <MenuItem x:Name="ShortcutFormatDocument" Header="Format Document" Click="FormatDocument_Click"/>
           <MenuItem x:Name="ShortcutFormatSelection" Header="Format Selection" Click="FormatSelection_Click"/>
