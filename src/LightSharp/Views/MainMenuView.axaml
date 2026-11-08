@@ -29,6 +29,7 @@
           <MenuItem Header="Select All  Ctrl+A" Click="SelectAll_Click"/>
         </MenuItem>
         <MenuItem Header="View"><MenuItem Header="Focus Output" Click="FocusOutput_Click"/></MenuItem>
+        <MenuItem Header="Settings"><MenuItem Header="Keyboard Shortcuts..." Click="KeyboardShortcuts_Click"/></MenuItem>
         <MenuItem x:Name="GitMenuItem" Header="Git">
           <MenuItem x:Name="GitChangesMenuItem" Header="Git Changes" Click="ShowGitChanges_Click" IsVisible="False"/>
           <MenuItem x:Name="RefreshGitMenuItem" Header="Refresh Status" Click="RefreshGit_Click" IsVisible="False"/>
