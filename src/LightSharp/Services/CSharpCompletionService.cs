@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Text;
 using System.Xml.Linq;
@@ -274,6 +275,44 @@ public sealed class CSharpCompletionService : IDisposable
         if (document is null) return null;
         return await CodeNavigationService.FindDefinitionAsync(
             document.WithText(SourceText.From(source)), offset, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CodeReferenceLocation>> FindReferencesAsync(
+        string projectPath, string filePath, string source, int offset,
+        CancellationToken cancellationToken)
+    {
+        var document = await GetDocumentAsync(projectPath, filePath, cancellationToken);
+        if (document is null) return [];
+        var current = document.WithText(SourceText.From(source));
+        var root = await current.GetSyntaxRootAsync(cancellationToken);
+        var model = await current.GetSemanticModelAsync(cancellationToken);
+        if (root is null || model is null || root.FullSpan.IsEmpty) return [];
+        var position = Math.Clamp(offset, 0, root.FullSpan.End - 1);
+        var token = root.FindToken(position);
+        if (!token.IsKind(SyntaxKind.IdentifierToken) && position > 0)
+            token = root.FindToken(position - 1);
+        if (!token.IsKind(SyntaxKind.IdentifierToken)) return [];
+        var node = token.Parent;
+        if (node is null) return [];
+        var symbol = model.GetSymbolInfo(node, cancellationToken).Symbol
+            ?? model.GetDeclaredSymbol(node, cancellationToken)
+            ?? node.Ancestors().Select(parent => model.GetDeclaredSymbol(parent, cancellationToken))
+                .FirstOrDefault(candidate => candidate is not null);
+        if (symbol is null) return [];
+        var references = await SymbolFinder.FindReferencesAsync(
+            symbol, current.Project.Solution, cancellationToken);
+        var hits = new List<CodeReferenceLocation>();
+        foreach (var reference in references)
+        foreach (var location in reference.Locations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (location.Document.FilePath is not { } path) continue;
+            var line = location.Location.GetLineSpan().StartLinePosition;
+            hits.Add(new CodeReferenceLocation(path, line.Line + 1, line.Character + 1,
+                location.Location.SourceSpan.Length));
+        }
+        return hits.Distinct().OrderBy(hit => hit.FilePath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(hit => hit.Line).ThenBy(hit => hit.Column).ToArray();
     }
 
     public void Dispose()
