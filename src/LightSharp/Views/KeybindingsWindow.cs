@@ -76,9 +76,10 @@ public sealed class KeybindingsWindow : Window
     {
         var previous = _commands.SelectedItem;
         var search = _filter.Text ?? "";
-        _commands.ItemsSource = Enum.GetValues<InputCommand>()
+        var visible = Enum.GetValues<InputCommand>()
             .Where(c => c.ToString().Contains(search, StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (previous is InputCommand selected && _commands.Items.Contains(selected)) _commands.SelectedItem = selected;
+        _commands.ItemsSource = visible;
+        if (previous is InputCommand selected && visible.Contains(selected)) _commands.SelectedItem = selected;
         else _commands.SelectedIndex = 0;
         UpdateSelection();
     }
