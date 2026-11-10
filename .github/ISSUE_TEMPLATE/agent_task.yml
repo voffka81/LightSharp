@@ -1,0 +1,52 @@
+name: Agent-ready task
+description: A scoped, testable implementation task for a coding agent or human contributor
+title: "[Task] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: "Submitting an Issue does not authorize launching Codex or another agent. The owner decides when and how to delegate."
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal and context
+      description: Describe the problem and link related epics or design decisions.
+      placeholder: "Current behavior, user need, related Issues"
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and architectural boundaries
+      description: Identify affected modules and areas that must remain unchanged.
+      placeholder: "In scope / out of scope / relevant files and docs"
+    validations:
+      required: true
+  - type: textarea
+    id: assets
+    attributes:
+      label: Inputs and dependencies
+      description: Link available reference files, reproducers, scenes, assets, logs, versions and dependent PRs. Verify assets are actually accessible.
+      placeholder: "Links and exact paths; or None"
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Prefer observable pass/fail scenarios.
+      placeholder: "- [ ] Given ... when ... then ..."
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Validation plan
+      description: List focused automated tests, CI, and manual device/Unity/UI checks. Mark inaccessible environments NOT TESTED.
+      placeholder: "Tests, builds, supported devices, expected artifacts"
+    validations:
+      required: true
+  - type: textarea
+    id: limits
+    attributes:
+      label: Constraints and stop conditions
+      description: Limit scope, retries and expensive external calls.
+      value: "One dedicated branch and PR. No unrelated refactoring, automatic merge, deployment, new agents or repeated failed-command loops. After two unsuccessful fixes of the same failure, stop with diagnostics."
